@@ -1,0 +1,8 @@
+{
+  // Inherits module/moduleResolution NodeNext from the base config; with
+  // "type": "module" in package.json that emits ESM.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist/esm"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "name": "@omnisocials/sdk",
+  "version": "0.1.0",
+  "description": "Official Node.js / TypeScript SDK for the OmniSocials API. Schedule and publish social media posts across 11 platforms.",
+  "keywords": [
+    "omnisocials",
+    "social-media",
+    "scheduling",
+    "instagram",
+    "facebook",
+    "linkedin",
+    "youtube",
+    "tiktok",
+    "twitter",
+    "pinterest",
+    "bluesky",
+    "threads",
+    "mastodon",
+    "api",
+    "sdk"
+  ],
+  "homepage": "https://docs.omnisocials.com",
+  "license": "MIT",
+  "author": "OmniSocials <hello@omnisocials.com>",
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && npm run postbuild:cjs",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "postbuild:cjs": "node -e \"require('fs').writeFileSync('dist/cjs/package.json', JSON.stringify({ type: 'commonjs' }) + '\\n')\"",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}

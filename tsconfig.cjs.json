@@ -1,0 +1,11 @@
+{
+  // Build-only config for the CJS leg (editors load tsconfig.json for src/).
+  // CommonJS emit requires the legacy node10 resolution; the pinned
+  // typescript 5.x devDependency accepts it.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node10",
+    "outDir": "dist/cjs"
+  }
+}
