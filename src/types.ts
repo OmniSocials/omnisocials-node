@@ -199,7 +199,8 @@ export interface Post {
   type?: string;
   /** Platform identifiers this post targets (e.g. ["instagram", "x"]). */
   accounts: string[];
-  media: unknown[];
+  /** Attached media: a flat array shared across platforms, or a per-platform map (`default` key + platform overrides). */
+  media: unknown[] | Record<string, unknown[]>;
   /** ISO datetime the post is/was scheduled for, or null. */
   schedule_at: string | null;
   approval_status?: string | null;
