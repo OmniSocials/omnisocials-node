@@ -24,6 +24,7 @@ export { FoldersResource } from "./resources/folders.js";
 export { AccountsResource } from "./resources/accounts.js";
 export { AnalyticsResource } from "./resources/analytics.js";
 export { LocationsResource } from "./resources/locations.js";
+export { AudioResource } from "./resources/audio.js";
 export { WebhooksResource } from "./resources/webhooks.js";
 
 export type {
@@ -77,6 +78,9 @@ export type {
   LocationSearchItem,
   LocationSearchResponse,
   LocationValidateResponse,
+  // Audio
+  AudioTrack,
+  AudioSearchResponse,
   // Webhooks
   Webhook,
   WebhookEventType,

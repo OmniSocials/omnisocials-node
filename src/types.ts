@@ -520,6 +520,38 @@ export interface LocationValidateResponse {
   [key: string]: unknown;
 }
 
+// ─── Audio ───────────────────────────────────────────────────────────────────
+
+export interface AudioTrack {
+  /** Meta audio id; use it as `instagram.audio_id` on a reel post. */
+  audio_id: string;
+  title: string | null;
+  artist: string | null;
+  duration_ms: number | null;
+  audio_type: "music" | "original_sound";
+  cover_url: string | null;
+  /** Temporary URL (~1.5 days); never persist it. */
+  preview_url: string | null;
+  ig_username: string | null;
+  [key: string]: unknown;
+}
+
+/**
+ * Note: audio responses are NOT wrapped in the usual `{ data }` envelope
+ * alone; `error` here is a plain string set when search is unavailable (e.g.
+ * no Facebook account connected), with `data` then empty.
+ */
+export interface AudioSearchResponse {
+  data: AudioTrack[];
+  error?: string | null;
+  /**
+   * true when the workspace needs a Facebook connection linked to the
+   * Instagram account.
+   */
+  needsFacebook?: boolean;
+  [key: string]: unknown;
+}
+
 // ─── Webhooks (management) ───────────────────────────────────────────────────
 
 export type WebhookEventType = "post.scheduled" | "post.published" | "post.failed";

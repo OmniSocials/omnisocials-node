@@ -10,6 +10,7 @@ import { FoldersResource } from "./resources/folders.js";
 import { AccountsResource } from "./resources/accounts.js";
 import { AnalyticsResource } from "./resources/analytics.js";
 import { LocationsResource } from "./resources/locations.js";
+import { AudioResource } from "./resources/audio.js";
 import { WebhooksResource } from "./resources/webhooks.js";
 
 export const VERSION = "0.1.0";
@@ -70,6 +71,7 @@ export class OmniSocials {
   readonly accounts: AccountsResource;
   readonly analytics: AnalyticsResource;
   readonly locations: LocationsResource;
+  readonly audio: AudioResource;
   readonly webhooks: WebhooksResource;
 
   constructor(options: OmniSocialsOptions = {}) {
@@ -99,6 +101,7 @@ export class OmniSocials {
     this.accounts = new AccountsResource(this);
     this.analytics = new AnalyticsResource(this);
     this.locations = new LocationsResource(this);
+    this.audio = new AudioResource(this);
     this.webhooks = new WebhooksResource(this);
   }
 
