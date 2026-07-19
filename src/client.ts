@@ -12,6 +12,7 @@ import { AnalyticsResource } from "./resources/analytics.js";
 import { LocationsResource } from "./resources/locations.js";
 import { AudioResource } from "./resources/audio.js";
 import { WebhooksResource } from "./resources/webhooks.js";
+import { InboxResource } from "./resources/inbox.js";
 
 export const VERSION = "0.1.0";
 
@@ -73,6 +74,7 @@ export class OmniSocials {
   readonly locations: LocationsResource;
   readonly audio: AudioResource;
   readonly webhooks: WebhooksResource;
+  readonly inbox: InboxResource;
 
   constructor(options: OmniSocialsOptions = {}) {
     const apiKey =
@@ -103,6 +105,7 @@ export class OmniSocials {
     this.locations = new LocationsResource(this);
     this.audio = new AudioResource(this);
     this.webhooks = new WebhooksResource(this);
+    this.inbox = new InboxResource(this);
   }
 
   /** `GET /health` (no scopes required). */

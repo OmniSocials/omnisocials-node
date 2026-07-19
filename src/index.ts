@@ -26,6 +26,7 @@ export { AnalyticsResource } from "./resources/analytics.js";
 export { LocationsResource } from "./resources/locations.js";
 export { AudioResource } from "./resources/audio.js";
 export { WebhooksResource } from "./resources/webhooks.js";
+export { InboxResource } from "./resources/inbox.js";
 
 export type {
   // Envelope
@@ -89,6 +90,19 @@ export type {
   RotateWebhookSecretResponse,
   WebhookEvent,
   WebhookEventTarget,
+  // Inbox
+  InboxCursorPagination,
+  InboxParticipant,
+  InboxPostRef,
+  InboxConversation,
+  InboxMessage,
+  ListInboxConversationsParams,
+  ListInboxMessagesParams,
+  ReplyInboxParams,
+  InboxConversationsResponse,
+  InboxMessagesResponse,
+  InboxMarkReadResponse,
+  InboxReplyResponse,
   // Health
   HealthResponse,
 } from "./types.js";

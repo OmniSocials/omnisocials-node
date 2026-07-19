@@ -1,0 +1,76 @@
+import type { OmniSocials } from "../client.js";
+import type {
+  InboxConversationsResponse,
+  InboxMarkReadResponse,
+  InboxMessagesResponse,
+  InboxReplyResponse,
+  ListInboxConversationsParams,
+  ListInboxMessagesParams,
+  ReplyInboxParams,
+} from "../types.js";
+
+export class InboxResource {
+  constructor(private readonly client: OmniSocials) {}
+
+  /**
+   * `GET /inbox/conversations` - list social inbox conversations (DMs,
+   * comments, mentions) across connected platforms, newest activity first.
+   * Filter by `platform`, `type`, and `unread`. Uses cursor pagination: pass
+   * the previous response's `pagination.next_cursor` as `cursor` to page on
+   * while `pagination.has_more` is true.
+   */
+  listConversations(
+    params: ListInboxConversationsParams = {}
+  ): Promise<InboxConversationsResponse> {
+    return this.client.get("/inbox/conversations", {
+      platform: params.platform,
+      type: params.type,
+      unread: params.unread,
+      limit: params.limit,
+      cursor: params.cursor,
+    });
+  }
+
+  /**
+   * `GET /inbox/conversations/:conversationId/messages` - full message thread
+   * for one conversation, newest first. Uses cursor pagination (`limit` /
+   * `cursor`). The id is URL-encoded for you, so pass it exactly as returned
+   * (LinkedIn ids contain `:` and `()`).
+   */
+  getMessages(
+    conversationId: string,
+    params: ListInboxMessagesParams = {}
+  ): Promise<InboxMessagesResponse> {
+    return this.client.get(
+      `/inbox/conversations/${encodeURIComponent(conversationId)}/messages`,
+      { limit: params.limit, cursor: params.cursor }
+    );
+  }
+
+  /**
+   * `POST /inbox/conversations/:conversationId/read` - mark every message in
+   * the conversation as read. Returns the count of messages that were newly
+   * marked read.
+   */
+  markRead(conversationId: string): Promise<InboxMarkReadResponse> {
+    return this.client.post(
+      `/inbox/conversations/${encodeURIComponent(conversationId)}/read`
+    );
+  }
+
+  /**
+   * `POST /inbox/conversations/:conversationId/reply` - send a reply into the
+   * conversation (a DM message, or a reply to the comment/mention). Optionally
+   * attach a single media asset by public URL with `attachment_url` +
+   * `attachment_type`. Returns the created outbound message.
+   */
+  reply(
+    conversationId: string,
+    params: ReplyInboxParams
+  ): Promise<InboxReplyResponse> {
+    return this.client.post(
+      `/inbox/conversations/${encodeURIComponent(conversationId)}/reply`,
+      params
+    );
+  }
+}

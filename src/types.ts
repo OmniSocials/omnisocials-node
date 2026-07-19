@@ -629,6 +629,134 @@ export interface WebhookEvent {
   [key: string]: unknown;
 }
 
+// ─── Inbox (social inbox) ────────────────────────────────────────────────────
+
+/**
+ * Cursor-based pagination used by the inbox list endpoints. Unlike the
+ * offset-based `Pagination`, page on by passing `next_cursor` back as the
+ * request's `cursor` while `has_more` is true. `next_cursor` is `null` on the
+ * last page.
+ */
+export interface InboxCursorPagination {
+  next_cursor: string | null;
+  has_more: boolean;
+  limit: number;
+}
+
+/** A person on the other side of a conversation (or the sender of a message). */
+export interface InboxParticipant {
+  id: string;
+  name: string;
+  username: string;
+  profile_picture: string | null;
+}
+
+/** The post a comment/mention conversation is attached to (null for DMs). */
+export interface InboxPostRef {
+  id: string | null;
+  caption: string | null;
+  thumbnail: string | null;
+}
+
+export interface InboxConversation {
+  conversation_id: string;
+  /** Platform identifier, e.g. "instagram", "facebook", "linkedin". */
+  platform: string;
+  /** Conversation kind: "dm", "comment", or "mention". */
+  type: string;
+  participant: InboxParticipant;
+  unread_count: number;
+  last_message: {
+    id: string;
+    /** "inbound" (from the participant) or "outbound" (from you). */
+    direction: string;
+    text: string;
+    timestamp: string;
+    is_read: boolean;
+  };
+  /** The related post for comment/mention conversations; null for DMs. */
+  post: InboxPostRef | null;
+}
+
+export interface InboxMessage {
+  id: string;
+  conversation_id: string;
+  /** Platform identifier, e.g. "instagram", "facebook", "linkedin". */
+  platform: string;
+  /** Message kind: "dm", "comment", or "mention". */
+  type: string;
+  /** "inbound" (from the sender) or "outbound" (from you). */
+  direction: string;
+  text: string;
+  timestamp: string;
+  is_read: boolean;
+  is_replied: boolean;
+  /** Emoji reaction on the message, if any. */
+  reaction: string | null;
+  /** Parent comment id when this is a threaded comment reply. */
+  parent_comment_id: string | null;
+  sender: InboxParticipant;
+  /** The related post for comment/mention messages; null for DMs. */
+  post: InboxPostRef | null;
+}
+
+export interface ListInboxConversationsParams {
+  /** Filter by platform. */
+  platform?: "instagram" | "facebook" | "linkedin";
+  /** Filter by conversation kind. */
+  type?: "dm" | "comment" | "mention";
+  /** Only return conversations with unread messages. */
+  unread?: boolean;
+  /** Max items to return (1-100). */
+  limit?: number;
+  /** Opaque cursor from a previous response's `pagination.next_cursor`. */
+  cursor?: string;
+}
+
+export interface ListInboxMessagesParams {
+  /** Max items to return. */
+  limit?: number;
+  /** Opaque cursor from a previous response's `pagination.next_cursor`. */
+  cursor?: string;
+}
+
+export interface ReplyInboxParams {
+  /** Reply text (required). */
+  text: string;
+  /** Public URL of a single media asset to attach. */
+  attachment_url?: string;
+  /** Attachment kind; pair with `attachment_url`. */
+  attachment_type?: "image" | "video" | "audio" | "file";
+}
+
+/** List envelope for inbox conversations (cursor-paginated). */
+export interface InboxConversationsResponse {
+  data: InboxConversation[];
+  pagination: InboxCursorPagination;
+  [key: string]: unknown;
+}
+
+/** List envelope for inbox messages (cursor-paginated). */
+export interface InboxMessagesResponse {
+  data: InboxMessage[];
+  pagination: InboxCursorPagination;
+  [key: string]: unknown;
+}
+
+export interface InboxMarkReadResponse {
+  conversation_id: string;
+  /** Number of messages that were newly marked read. */
+  marked_read: number;
+  [key: string]: unknown;
+}
+
+/** Single-item envelope for the message created by a reply. */
+export interface InboxReplyResponse {
+  data: InboxMessage;
+  message?: string;
+  [key: string]: unknown;
+}
+
 // ─── Health ──────────────────────────────────────────────────────────────────
 
 export interface HealthResponse {
