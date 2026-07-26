@@ -30,15 +30,33 @@ export interface ListResponse<T> {
   [key: string]: unknown;
 }
 
+// ─── Media entries (alt text) ────────────────────────────────────────────────
+
+/**
+ * One `media_urls` entry: a plain public URL string, or an object pairing the
+ * URL with `alt` text (accessibility description, max 1500 chars). Alt text is
+ * delivered to Mastodon (media description), Bluesky (embed alt), X (photo/GIF
+ * media metadata), and Pinterest (pin alt_text fallback). Plain strings and
+ * objects can be mixed in the same array.
+ */
+export type MediaUrlInput = string | { url: string; alt?: string };
+
+/**
+ * One `media_ids` entry: a Media Library id string, or an object pairing the
+ * id with `alt` text (accessibility description, max 1500 chars). See
+ * {@link MediaUrlInput} for which platforms receive alt text.
+ */
+export type MediaIdInput = string | { id: string; alt?: string };
+
 // ─── X (Twitter) options ─────────────────────────────────────────────────────
 
 export interface XThreadPartInput {
   /** Tweet text, up to 280 chars (the API enforces 280 even for X Premium). */
   text: string;
-  /** Optional per-part media as Library ids from media upload (max 4 combined with media_urls). */
-  media_ids?: string[];
-  /** Optional per-part media as external URLs (max 4 combined with media_ids). */
-  media_urls?: string[];
+  /** Optional per-part media as Library ids from media upload (max 4 combined with media_urls). Entries accept `{ id, alt }` objects for per-media alt text. */
+  media_ids?: MediaIdInput[];
+  /** Optional per-part media as external URLs (max 4 combined with media_ids). Entries accept `{ url, alt }` objects for per-media alt text. */
+  media_urls?: MediaUrlInput[];
 }
 
 export interface XPostOptions {
@@ -63,10 +81,10 @@ export interface XPostOptionsUpdate extends Omit<XPostOptions, "thread_parts"> {
 export interface BlueskyThreadPartInput {
   /** Post text, up to 300 characters (counted as graphemes; one emoji = 1). */
   text: string;
-  /** Optional per-part media as Library ids from media upload (max 4). */
-  media_ids?: string[];
-  /** Optional per-part media as external URLs (max 4). */
-  media_urls?: string[];
+  /** Optional per-part media as Library ids from media upload (max 4). Entries accept `{ id, alt }` objects for per-media alt text. */
+  media_ids?: MediaIdInput[];
+  /** Optional per-part media as external URLs (max 4). Entries accept `{ url, alt }` objects for per-media alt text. */
+  media_urls?: MediaUrlInput[];
 }
 
 export interface BlueskyPostOptions {
@@ -87,10 +105,10 @@ export interface BlueskyPostOptionsUpdate {
 export interface MastodonThreadPartInput {
   /** Status text, up to 500 characters by default (some instances allow more). */
   text: string;
-  /** Optional per-part media as Library ids from media upload (max 4). */
-  media_ids?: string[];
-  /** Optional per-part media as external URLs (max 4). */
-  media_urls?: string[];
+  /** Optional per-part media as Library ids from media upload (max 4). Entries accept `{ id, alt }` objects for per-media alt text. */
+  media_ids?: MediaIdInput[];
+  /** Optional per-part media as external URLs (max 4). Entries accept `{ url, alt }` objects for per-media alt text. */
+  media_urls?: MediaUrlInput[];
 }
 
 export interface MastodonPostOptions {
@@ -122,10 +140,10 @@ export interface CreatePostParams {
   channels?: string[];
   /** ISO 8601 datetime. Omit to create a draft. */
   scheduled_at?: string;
-  /** Media Library ids, either shared or a per-platform map. */
-  media_ids?: string[] | Record<string, string[]>;
-  /** Public media URLs, either shared or a per-platform map. */
-  media_urls?: string[] | Record<string, string[]>;
+  /** Media Library ids, either shared or a per-platform map. Entries accept `{ id, alt }` objects for per-media alt text. */
+  media_ids?: MediaIdInput[] | Record<string, MediaIdInput[]>;
+  /** Public media URLs, either shared or a per-platform map. Entries accept `{ url, alt }` objects for per-media alt text. */
+  media_urls?: MediaUrlInput[] | Record<string, MediaUrlInput[]>;
   type?: string;
   source?: string;
   link_url?: string;
@@ -136,6 +154,18 @@ export interface CreatePostParams {
   location_id?: string;
   collaborators?: string[];
   user_tags?: UserTag[];
+  /**
+   * Name of a saved hashtag set (case-insensitive). Applies the set once at
+   * create time; tags already in a caption are skipped; Instagram's
+   * 30-hashtag cap returns error code `hashtag_limit_exceeded`.
+   */
+  hashtag_set?: string;
+  /** Id of a saved hashtag set to apply at create time (see `hashtag_set`). */
+  hashtag_set_id?: string;
+  /** Where the hashtags go: appended to the caption (default) or posted as the first comment. */
+  hashtag_placement?: "caption_append" | "first_comment";
+  /** Restrict the hashtags to a subset of the post's channels. Omit for all. */
+  hashtag_platforms?: string[];
   pinterest?: Record<string, unknown>;
   youtube?: Record<string, unknown>;
   instagram?: Record<string, unknown>;
@@ -153,8 +183,10 @@ export interface UpdatePostParams {
   content?: string | Record<string, string>;
   scheduled_at?: string;
   channels?: string[];
-  media_ids?: string[] | Record<string, string[]>;
-  media_urls?: string[] | Record<string, string[]>;
+  /** Entries accept `{ id, alt }` objects for per-media alt text. */
+  media_ids?: MediaIdInput[] | Record<string, MediaIdInput[]>;
+  /** Entries accept `{ url, alt }` objects for per-media alt text. */
+  media_urls?: MediaUrlInput[] | Record<string, MediaUrlInput[]>;
   type?: string;
   location_id?: string;
   collaborators?: string[];
@@ -199,7 +231,7 @@ export interface Post {
   type?: string;
   /** Platform identifiers this post targets (e.g. ["instagram", "x"]). */
   accounts: string[];
-  /** Attached media: a flat array shared across platforms, or a per-platform map (`default` key + platform overrides). */
+  /** Attached media: a flat array shared across platforms, or a per-platform map (`default` key + platform overrides). Items include an optional `alt` accessibility description when one was set. */
   media: unknown[] | Record<string, unknown[]>;
   /** ISO datetime the post is/was scheduled for, or null. */
   schedule_at: string | null;
@@ -227,7 +259,7 @@ export interface Post {
     reply_settings?: string;
     paid_partnership?: boolean;
     made_with_ai?: boolean;
-    thread_parts?: Array<{ id?: string; text: string; media_urls?: string[] }>;
+    thread_parts?: Array<{ id?: string; text: string; media_urls?: MediaUrlInput[] }>;
     [key: string]: unknown;
   };
   [key: string]: unknown;
@@ -387,6 +419,35 @@ export interface UpdateFolderParams {
   name?: string;
   /** Move under this folder; `null` moves it to the top level. */
   parent_id?: string | null;
+}
+
+// ─── Hashtag sets ────────────────────────────────────────────────────────────
+
+export interface HashtagSet {
+  id: string;
+  name: string;
+  /** The tags, WITHOUT the leading `#`. */
+  hashtags: string[];
+  hashtag_count: number;
+  /** Ready-to-paste form, e.g. `"#a #b"`. */
+  preview: string;
+  created_at: string;
+  updated_at: string;
+  [key: string]: unknown;
+}
+
+export interface CreateHashtagSetParams {
+  /** Set name; posts.create matches it case-insensitively via `hashtag_set`. */
+  name: string;
+  /** The tags: an array, or a single string of tags. */
+  hashtags: string[] | string;
+}
+
+export interface UpdateHashtagSetParams {
+  /** New set name. */
+  name?: string;
+  /** Replaces the FULL hashtag list: an array, or a single string of tags. */
+  hashtags?: string[] | string;
 }
 
 // ─── Accounts ────────────────────────────────────────────────────────────────

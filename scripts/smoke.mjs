@@ -48,6 +48,7 @@ const surface = {
   posts: ["list", "get", "recentPlatform", "create", "createAndPublish", "update", "delete", "publish"],
   media: ["list", "get", "upload", "uploadFromUrl", "uploadFromBase64", "createUploadUrl", "check", "update", "delete"],
   folders: ["list", "create", "update", "delete"],
+  hashtagSets: ["list", "get", "create", "update", "delete"],
   accounts: ["list", "get"],
   analytics: ["post", "posts", "overview", "accounts", "bestTimes"],
   locations: ["search", "validate"],
@@ -166,6 +167,6 @@ const cjsVerified = cjs.verifyWebhookSignature({
 assert.equal(cjsVerified.id, eventObject.id);
 
 console.log("All smoke tests passed.");
-console.log("- ESM import OK, client + 7 resources expose all inventory methods");
+console.log("- ESM import OK, client + 8 resources expose all inventory methods");
 console.log("- Webhook signature: accepts valid, rejects tampered/stale/wrong-secret/malformed");
 console.log("- CJS require() OK (dual build works)");

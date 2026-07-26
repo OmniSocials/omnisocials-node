@@ -7,6 +7,7 @@ import type { HealthResponse } from "./types.js";
 import { PostsResource } from "./resources/posts.js";
 import { MediaResource } from "./resources/media.js";
 import { FoldersResource } from "./resources/folders.js";
+import { HashtagSetsResource } from "./resources/hashtag-sets.js";
 import { AccountsResource } from "./resources/accounts.js";
 import { AnalyticsResource } from "./resources/analytics.js";
 import { LocationsResource } from "./resources/locations.js";
@@ -14,7 +15,7 @@ import { AudioResource } from "./resources/audio.js";
 import { WebhooksResource } from "./resources/webhooks.js";
 import { InboxResource } from "./resources/inbox.js";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 
 const DEFAULT_BASE_URL = "https://api.omnisocials.com/v1";
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -69,6 +70,7 @@ export class OmniSocials {
   readonly posts: PostsResource;
   readonly media: MediaResource;
   readonly folders: FoldersResource;
+  readonly hashtagSets: HashtagSetsResource;
   readonly accounts: AccountsResource;
   readonly analytics: AnalyticsResource;
   readonly locations: LocationsResource;
@@ -100,6 +102,7 @@ export class OmniSocials {
     this.posts = new PostsResource(this);
     this.media = new MediaResource(this);
     this.folders = new FoldersResource(this);
+    this.hashtagSets = new HashtagSetsResource(this);
     this.accounts = new AccountsResource(this);
     this.analytics = new AnalyticsResource(this);
     this.locations = new LocationsResource(this);

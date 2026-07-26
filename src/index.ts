@@ -21,6 +21,7 @@ export type { VerifyWebhookSignatureParams } from "./webhooks.js";
 export { PostsResource } from "./resources/posts.js";
 export { MediaResource } from "./resources/media.js";
 export { FoldersResource } from "./resources/folders.js";
+export { HashtagSetsResource } from "./resources/hashtag-sets.js";
 export { AccountsResource } from "./resources/accounts.js";
 export { AnalyticsResource } from "./resources/analytics.js";
 export { LocationsResource } from "./resources/locations.js";
@@ -40,6 +41,8 @@ export type {
   ListPostsParams,
   RecentPlatformPostsParams,
   UserTag,
+  MediaUrlInput,
+  MediaIdInput,
   // Platform options
   XThreadPartInput,
   XPostOptions,
@@ -66,6 +69,10 @@ export type {
   Folder,
   CreateFolderParams,
   UpdateFolderParams,
+  // Hashtag sets
+  HashtagSet,
+  CreateHashtagSetParams,
+  UpdateHashtagSetParams,
   // Accounts
   Account,
   // Analytics

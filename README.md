@@ -96,6 +96,24 @@ await client.posts.createAndPublish({
 });
 ```
 
+### Per-media alt text
+
+Every `media_urls` / `media_ids` entry accepts either a plain string or an object with an `alt` accessibility description (max 1500 chars). Alt text is delivered to Mastodon (media description), Bluesky (embed alt), X (photos and GIFs), and Pinterest (pin alt text). Strings and objects can be mixed, and the same shape works in per-platform maps and `thread_parts` media.
+
+```ts
+await client.posts.create({
+  content: "Sunrise over the harbor",
+  channels: ["mastodon", "bluesky"],
+  scheduled_at: "2026-08-01T09:00:00Z",
+  media_urls: [
+    {
+      url: "https://example.com/harbor.jpg",
+      alt: "A small sailboat crossing a calm harbor at sunrise, sky in deep orange",
+    },
+  ],
+});
+```
+
 ### Post with platform-specific options
 
 ```ts
@@ -241,6 +259,36 @@ const { data: folders } = await client.folders.list(); // flat; build the tree v
 const { data: folder } = await client.folders.create({ name: "Campaigns" });
 await client.folders.update(folder.id, { name: "Campaigns 2026" });
 await client.folders.delete(folder.id); // files move to root, subfolders move up
+```
+
+## Hashtag Sets
+
+Save reusable hashtag groups and apply them to posts at create time. Uses the `posts:read` / `posts:write` scopes.
+
+```ts
+const { data: set } = await client.hashtagSets.create({
+  name: "Launch",
+  hashtags: ["saas", "buildinpublic", "startup"], // or one string: "#saas #buildinpublic #startup"
+});
+console.log(set.preview); // "#saas #buildinpublic #startup"
+
+await client.hashtagSets.list();
+await client.hashtagSets.get(set.id);
+await client.hashtagSets.update(set.id, { hashtags: ["saas", "founder"] }); // replaces the full list
+await client.hashtagSets.delete(set.id); // resolves to null (204)
+```
+
+Apply a set when creating a post with `hashtag_set` (the set name, case-insensitive) or `hashtag_set_id`. The set is applied once at create time and tags already in the caption are skipped. `hashtag_placement` is `"caption_append"` (default) or `"first_comment"`, and `hashtag_platforms` restricts the hashtags to a subset of the post's channels. Instagram's 30-hashtag cap returns error code `hashtag_limit_exceeded`.
+
+```ts
+await client.posts.create({
+  content: "Launch day!",
+  channels: ["instagram", "x"],
+  scheduled_at: "2026-08-01T09:00:00Z",
+  hashtag_set: "Launch",
+  hashtag_placement: "first_comment",
+  hashtag_platforms: ["instagram"],
+});
 ```
 
 ## Accounts
