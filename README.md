@@ -150,15 +150,18 @@ await client.posts.create({
 
 On update, pass `thread_parts: null` to clear thread mode (revert to a single post); omit it to leave the existing thread untouched.
 
-### List, get, update, publish, delete
+### List, get, update, publish, retry, delete
 
 ```ts
 const { data: posts, pagination } = await client.posts.list({ status: "scheduled", limit: 50 });
 const { data: one } = await client.posts.get(posts[0].id);
 await client.posts.update(one.id, { scheduled_at: "2026-08-02T10:00:00Z" });
 await client.posts.publish(one.id); // publish a draft/scheduled post now
+await client.posts.retry(one.id);   // retry only the failed platforms of a failed/warning post
 await client.posts.delete(one.id);  // resolves to null (204)
 ```
+
+`retry` re-publishes only the platforms that failed, on the same post; platforms that already succeeded are never posted again. It is asynchronous: a 200 means the retry is queued, so poll `get` for the outcome. Max 3 retries per platform.
 
 ### Recent platform posts
 

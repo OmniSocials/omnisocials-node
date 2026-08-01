@@ -247,6 +247,17 @@ export interface Post {
   /** Instagram photo user tags, echoed when set. */
   user_tags?: Array<{ username: string; x: number; y: number; image_index?: number }>;
   source?: string | null;
+  /**
+   * Present when this post was created by the dashboard "retry as new post"
+   * flow: the ID of the original failed post it retries.
+   */
+  retry_of?: string;
+  /**
+   * Present on a post that has been retried as a new post: the IDs of its
+   * retry posts. A `published` post with empty `published_urls` and `retries`
+   * set is a resolved failure, not a second publish.
+   */
+  retries?: string[];
   created_at: string;
   updated_at?: string;
   /**
@@ -263,6 +274,18 @@ export interface Post {
     [key: string]: unknown;
   };
   [key: string]: unknown;
+}
+
+/** `data` payload of `POST /posts/:id/retry`. */
+export interface PostRetryResult {
+  /** ID of the post being retried. */
+  id: string;
+  /** Post status after queueing, e.g. "posting". */
+  status: string;
+  /** The failed platforms being retried. */
+  platforms: string[];
+  /** Human-readable confirmation, e.g. "Retry queued for: tiktok. ...". */
+  message: string;
 }
 
 // ─── Media ───────────────────────────────────────────────────────────────────
