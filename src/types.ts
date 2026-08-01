@@ -36,8 +36,8 @@ export interface ListResponse<T> {
  * One `media_urls` entry: a plain public URL string, or an object pairing the
  * URL with `alt` text (accessibility description, max 1500 chars). Alt text is
  * delivered to Mastodon (media description), Bluesky (embed alt), X (photo/GIF
- * media metadata), and Pinterest (pin alt_text fallback). Plain strings and
- * objects can be mixed in the same array.
+ * media metadata), Pinterest (pin alt_text fallback), Instagram (images), and
+ * LinkedIn (images). Plain strings and objects can be mixed in the same array.
  */
 export type MediaUrlInput = string | { url: string; alt?: string };
 
