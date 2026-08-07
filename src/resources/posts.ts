@@ -1,6 +1,7 @@
 import type { OmniSocials } from "../client.js";
 import type {
   CreatePostParams,
+  CreatePostResponse,
   ItemResponse,
   ListPostsParams,
   ListResponse,
@@ -44,15 +45,23 @@ export class PostsResource {
     });
   }
 
-  /** `POST /posts/create` - create a draft or scheduled post. */
-  create(params: CreatePostParams): Promise<ItemResponse<Post>> {
+  /**
+   * `POST /posts/create` - create a draft or scheduled post. When the post
+   * targets X and its text (or any thread part) contains a URL, the response
+   * carries a top-level `warnings` array (code `x_url_post_credits`): X's
+   * link-post fee is passed through as prepaid credits at publish time.
+   */
+  create(params: CreatePostParams): Promise<CreatePostResponse> {
     return this.client.post("/posts/create", params);
   }
 
-  /** `POST /posts/create-and-publish` - create a post and publish it immediately. */
+  /**
+   * `POST /posts/create-and-publish` - create a post and publish it
+   * immediately. See {@link create} for the `warnings` array on X link posts.
+   */
   createAndPublish(
     params: Omit<CreatePostParams, "scheduled_at">
-  ): Promise<ItemResponse<Post>> {
+  ): Promise<CreatePostResponse> {
     return this.client.post("/posts/create-and-publish", params);
   }
 

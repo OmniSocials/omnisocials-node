@@ -36,6 +36,8 @@ export type {
   ListResponse,
   // Posts
   Post,
+  PostWarning,
+  CreatePostResponse,
   CreatePostParams,
   UpdatePostParams,
   ListPostsParams,

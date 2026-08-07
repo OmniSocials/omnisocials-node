@@ -276,6 +276,38 @@ export interface Post {
   [key: string]: unknown;
 }
 
+/**
+ * One entry of the optional top-level `warnings` array on post create
+ * responses (a sibling of `data`, omitted when there is nothing to warn
+ * about). Currently only `x_url_post_credits`: X bills API posts whose text
+ * contains a URL at a premium, and OmniSocials passes that through as prepaid
+ * credits (20 credits per URL-containing tweet; threads billed per part with
+ * a link). Debiting starts at `enforce_from` (2026-08-14); if the company
+ * balance can't cover it at publish time, only the X target fails and can be
+ * retried after topping up in the dashboard (Settings -> Organisation ->
+ * Billing -> Credits). Posts without links stay free.
+ */
+export interface PostWarning {
+  /** Warning identifier, e.g. "x_url_post_credits". */
+  code: string;
+  /** Human-readable explanation. */
+  message: string;
+  /** Credits this post will use when it publishes. */
+  credits_required?: number;
+  /** The company's current credit balance (null if unavailable). */
+  credits_balance?: number | null;
+  /** Whether the credit debit is enforced yet (warning-only before `enforce_from`). */
+  enforced?: boolean;
+  /** ISO date enforcement starts, e.g. "2026-08-14". */
+  enforce_from?: string;
+}
+
+/** Response of `posts.create` / `posts.createAndPublish`: `{ data, warnings? }`. */
+export interface CreatePostResponse extends ItemResponse<Post> {
+  /** Non-blocking notices about this post; see {@link PostWarning}. */
+  warnings?: PostWarning[];
+}
+
 /** `data` payload of `POST /posts/:id/retry`. */
 export interface PostRetryResult {
   /** ID of the post being retried. */

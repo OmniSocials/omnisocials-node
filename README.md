@@ -58,7 +58,7 @@ The API allows **100 requests per minute** per API key. When you exceed it, the 
 
 ## Return values
 
-Methods return the parsed response body as-is: single items come back as `{ data: {...} }`, lists as `{ data: [...], pagination: {...} }`, and some responses carry extra sibling keys (media uploads include `compatibility`, PDF uploads include `slides` and `media_ids`). Endpoints that respond `204 No Content` (deletes) resolve to `null`.
+Methods return the parsed response body as-is: single items come back as `{ data: {...} }`, lists as `{ data: [...], pagination: {...} }`, and some responses carry extra sibling keys (media uploads include `compatibility`, PDF uploads include `slides` and `media_ids`, post creates targeting X with a URL in the text include `warnings`). Endpoints that respond `204 No Content` (deletes) resolve to `null`.
 
 ## Posts
 
@@ -149,6 +149,23 @@ await client.posts.create({
 ```
 
 On update, pass `thread_parts: null` to clear thread mode (revert to a single post); omit it to leave the existing thread untouched.
+
+### X link posts use credits
+
+X bills API posts whose text contains a URL at a premium, and OmniSocials passes that fee through as prepaid credits (20 credits per URL-containing tweet; threads billed per part with a link). When a create targets X and the text contains a URL, the response carries an optional top-level `warnings` array (a sibling of `data`, typed as `PostWarning[]`):
+
+```ts
+const res = await client.posts.create({
+  content: "Read the full story: https://example.com/post",
+  channels: ["x"],
+});
+const creditWarning = res.warnings?.find((w) => w.code === "x_url_post_credits");
+if (creditWarning) {
+  console.log(creditWarning.credits_required, creditWarning.credits_balance);
+}
+```
+
+From `enforce_from` (2026-08-14) the balance is checked at publish time, but credits are only deducted after the post successfully publishes (a failed publish is never charged). If the balance can't cover it, only the X target fails (other platforms publish normally); top up in the dashboard under Settings -> Organisation -> Billing -> Credits, then `posts.retry(id)`. Posts without links, analytics, and media on X stay free. There is no API endpoint for credits — they are managed in the dashboard.
 
 ### List, get, update, publish, retry, delete
 
