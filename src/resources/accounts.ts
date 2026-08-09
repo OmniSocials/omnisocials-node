@@ -1,11 +1,15 @@
 import type { OmniSocials } from "../client.js";
-import type { Account, ItemResponse, ListResponse } from "../types.js";
+import type { Account, AccountsListResponse, ItemResponse } from "../types.js";
 
 export class AccountsResource {
   constructor(private readonly client: OmniSocials) {}
 
-  /** `GET /accounts` - the workspace's connected social accounts. */
-  list(): Promise<ListResponse<Account>> {
+  /**
+   * `GET /accounts` - the workspace's connected social accounts. The
+   * response also carries the active workspace's identity top-level
+   * (`workspace_id`, `workspace_name`, `workspace_icon`), a sibling of `data`.
+   */
+  list(): Promise<AccountsListResponse> {
     return this.client.get("/accounts");
   }
 

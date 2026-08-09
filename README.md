@@ -167,6 +167,8 @@ if (creditWarning) {
 
 From `enforce_from` (2026-08-14) the balance is checked at publish time, but credits are only deducted after the post successfully publishes (a failed publish is never charged). If the balance can't cover it, only the X target fails (other platforms publish normally); top up in the dashboard under Settings -> Organisation -> Billing -> Credits, then `posts.retry(id)`. Posts without links, analytics, and media on X stay free. There is no API endpoint for credits — they are managed in the dashboard.
 
+Scheduling is also gated up front: every scheduled X link post reserves its cost until it publishes (shown as an orange "reserved" slice on the dashboard's credits page). `posts.create` / `update` / `publish` refuse the whole request, before it's accepted, with `402 { error: { code: "x_credits_insufficient", details: { credits_required, credits_balance, credits_reserved } } }` when reserving this post's cost would push the company's total reserved credits past its balance. Drafts are never gated, and posts publishing before `enforce_from` are never gated.
+
 ### List, get, update, publish, retry, delete
 
 ```ts
@@ -430,6 +432,43 @@ app.post(
 ```
 
 `verifyWebhookSignature` uses a constant-time comparison, rejects timestamps older than `tolerance` seconds (replay protection), throws `WebhookVerificationError` on any failure, and returns the parsed event on success.
+
+## Inbox
+
+Read and reply to your Instagram, Facebook, and LinkedIn Page DMs, comments, and mentions, plus X (Twitter) DMs once a workspace opts in. List and message endpoints use cursor pagination (`cursor` in, `pagination.next_cursor` out) instead of offset.
+
+```ts
+const { data: conversations } = await client.inbox.listConversations({
+  platform: "instagram",
+  unread: true,
+  limit: 25,
+});
+
+const { data: messages } = await client.inbox.getMessages(conversations[0].conversation_id);
+await client.inbox.markRead(conversations[0].conversation_id);
+
+await client.inbox.reply(conversations[0].conversation_id, {
+  text: "Yes, we ship worldwide!",
+});
+```
+
+### X DM reply credits
+
+X DM replies cost 2 prepaid credits per send (X's per-request send fee, passed through at cost), debited from the company balance before the send and auto-refunded if the send fails. On an X conversation, `inbox.reply()` can throw two new 402 codes: `insufficient_credits` (the balance can't cover the 2 credits) and `x_inbox_suspended` (the workspace's X inbox auto-suspended at zero balance; top up and re-enable it in the dashboard to resume — DMs that arrive while suspended are not recovered).
+
+```ts
+import { APIError } from "@omnisocials/sdk";
+
+try {
+  await client.inbox.reply(conversationId, { text: "Thanks for reaching out!" });
+} catch (err) {
+  if (err instanceof APIError && err.status === 402) {
+    console.error(`Credits issue (${err.code}): ${err.message}`);
+  } else {
+    throw err;
+  }
+}
+```
 
 ## Health
 

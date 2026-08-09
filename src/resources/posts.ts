@@ -50,6 +50,14 @@ export class PostsResource {
    * targets X and its text (or any thread part) contains a URL, the response
    * carries a top-level `warnings` array (code `x_url_post_credits`): X's
    * link-post fee is passed through as prepaid credits at publish time.
+   *
+   * Scheduling an X link post is also gated up front: if reserving this
+   * post's cost would push the company's total reserved credits (across all
+   * scheduled X link posts) past its balance, the request is rejected before
+   * it's accepted with `402 { error: { code: "x_credits_insufficient",
+   * details: { credits_required, credits_balance, credits_reserved } } }`.
+   * Drafts are never gated, and posts publishing before 2026-08-14 are never
+   * gated.
    */
   create(params: CreatePostParams): Promise<CreatePostResponse> {
     return this.client.post("/posts/create", params);
@@ -57,7 +65,8 @@ export class PostsResource {
 
   /**
    * `POST /posts/create-and-publish` - create a post and publish it
-   * immediately. See {@link create} for the `warnings` array on X link posts.
+   * immediately. See {@link create} for the `warnings` array and the
+   * `402 x_credits_insufficient` schedule-time gate on X link posts.
    */
   createAndPublish(
     params: Omit<CreatePostParams, "scheduled_at">

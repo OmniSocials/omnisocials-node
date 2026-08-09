@@ -63,6 +63,14 @@ export class InboxResource {
    * conversation (a DM message, or a reply to the comment/mention). Optionally
    * attach a single media asset by public URL with `attachment_url` +
    * `attachment_type`. Returns the created outbound message.
+   *
+   * X DM replies cost 2 prepaid credits per send (X's per-request send fee,
+   * passed through at cost), debited from the company balance before the
+   * send and auto-refunded if the send fails. Two new 402 codes can be
+   * thrown: `insufficient_credits` (the balance can't cover the 2 credits)
+   * and `x_inbox_suspended` (the workspace's X inbox auto-suspended at zero
+   * balance; top up and re-enable it in the dashboard to resume - DMs that
+   * arrive while suspended are not recovered).
    */
   reply(
     conversationId: string,

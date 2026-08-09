@@ -1,11 +1,12 @@
 import type { OmniSocials } from "../client.js";
 import type {
   AccountAnalyticsParams,
-  AnalyticsOverview,
   AnalyticsOverviewParams,
+  AnalyticsOverviewResponse,
   BestTimesParams,
   ItemResponse,
   PostAnalytics,
+  PostsAnalyticsResponse,
 } from "../types.js";
 
 export class AnalyticsResource {
@@ -18,16 +19,21 @@ export class AnalyticsResource {
 
   /**
    * `GET /analytics/posts?ids=a,b,c` - batch metrics for up to 100 posts in
-   * one call instead of one request per post.
+   * one call instead of one request per post. The response also carries
+   * `count` (a sibling of `data`), the number of entries returned.
    */
-  posts(postIds: string[]): Promise<ItemResponse<PostAnalytics[]>> {
+  posts(postIds: string[]): Promise<PostsAnalyticsResponse> {
     return this.client.get("/analytics/posts", { ids: postIds.join(",") });
   }
 
-  /** `GET /analytics/overview` - workspace-wide totals for a period. */
+  /**
+   * `GET /analytics/overview` - workspace-wide totals for a period. The
+   * response also carries `current_date` (a sibling of `data`), the server's
+   * current date, useful for grounding relative date calculations.
+   */
   overview(
     params: AnalyticsOverviewParams = {}
-  ): Promise<ItemResponse<AnalyticsOverview>> {
+  ): Promise<AnalyticsOverviewResponse> {
     return this.client.get("/analytics/overview", {
       period: params.period,
       start_date: params.start_date,

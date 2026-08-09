@@ -532,6 +532,16 @@ export interface Account {
   [key: string]: unknown;
 }
 
+/** Response of `accounts.list()`: `{ data, workspace_id?, workspace_name?, workspace_icon? }`. */
+export interface AccountsListResponse extends ListResponse<Account> {
+  /** Stable id of the active workspace this key belongs to. */
+  workspace_id?: number;
+  /** Human-readable name of the active workspace. */
+  workspace_name?: string | null;
+  /** Icon URL of the active workspace, if one is set. */
+  workspace_icon?: string | null;
+}
+
 // ─── Analytics ───────────────────────────────────────────────────────────────
 
 /**
@@ -552,6 +562,12 @@ export interface PostAnalytics {
   post_id: string;
   platforms: Record<string, PostAnalyticsPlatformEntry>;
   [key: string]: unknown;
+}
+
+/** Response of `analytics.posts()`: `{ data, count? }`. */
+export interface PostsAnalyticsResponse extends ItemResponse<PostAnalytics[]> {
+  /** Number of entries returned (equals the number of valid ids requested). */
+  count?: number;
 }
 
 /** Per-platform block inside `AnalyticsOverview.platform_breakdown`. */
@@ -575,6 +591,12 @@ export interface AnalyticsOverview {
   top_performing_platform: string | null;
   platform_breakdown: Record<string, AnalyticsOverviewPlatform>;
   [key: string]: unknown;
+}
+
+/** Response of `analytics.overview()`: `{ data, current_date? }`. */
+export interface AnalyticsOverviewResponse extends ItemResponse<AnalyticsOverview> {
+  /** Today's date (YYYY-MM-DD), server-side, for grounding relative date calculations. */
+  current_date?: string;
 }
 
 export interface AnalyticsOverviewParams {
@@ -784,7 +806,7 @@ export interface InboxConversation {
   unread_count: number;
   last_message: {
     id: string;
-    /** "inbound" (from the participant) or "outbound" (from you). */
+    /** "incoming" (from the participant) or "outgoing" (from you). */
     direction: string;
     text: string;
     timestamp: string;
@@ -801,7 +823,7 @@ export interface InboxMessage {
   platform: string;
   /** Message kind: "dm", "comment", or "mention". */
   type: string;
-  /** "inbound" (from the sender) or "outbound" (from you). */
+  /** "incoming" (from the sender) or "outgoing" (from you). */
   direction: string;
   text: string;
   timestamp: string;
@@ -818,7 +840,7 @@ export interface InboxMessage {
 
 export interface ListInboxConversationsParams {
   /** Filter by platform. */
-  platform?: "instagram" | "facebook" | "linkedin";
+  platform?: "instagram" | "facebook" | "linkedin" | "x";
   /** Filter by conversation kind. */
   type?: "dm" | "comment" | "mention";
   /** Only return conversations with unread messages. */
