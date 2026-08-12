@@ -124,6 +124,31 @@ export interface MastodonPostOptionsUpdate {
   thread_parts?: MastodonThreadPartInput[] | null;
 }
 
+/**
+ * Non-sponsored LinkedIn poll (question + 2-4 options + duration). Mutually
+ * exclusive with media and a link share on that channel's post — a poll
+ * takes priority over both at publish time.
+ */
+export interface LinkedInPollFields {
+  /** The poll question (max 140 characters). */
+  question: string;
+  /** 2-4 answer options (max 30 characters each). */
+  options: string[];
+  duration: "ONE_DAY" | "THREE_DAYS" | "SEVEN_DAYS" | "FOURTEEN_DAYS";
+}
+
+/**
+ * LinkedIn poll(s), independent per channel — `linkedin` (personal profile)
+ * and `linkedin_page` (company page) can each carry their own poll, or
+ * none. On update_post, replaces wholesale: set a channel's key to `null`
+ * to clear that channel's poll and revert it to a normal post; omit the
+ * whole field to leave both channels' polls untouched.
+ */
+export interface LinkedInPollInput {
+  linkedin?: LinkedInPollFields | null;
+  linkedin_page?: LinkedInPollFields | null;
+}
+
 // ─── Posts ───────────────────────────────────────────────────────────────────
 
 export interface UserTag {
@@ -172,6 +197,7 @@ export interface CreatePostParams {
   facebook?: Record<string, unknown>;
   linkedin?: Record<string, unknown>;
   linkedin_page?: Record<string, unknown>;
+  linkedin_poll?: LinkedInPollInput | null;
   tiktok?: Record<string, unknown>;
   x?: XPostOptions;
   bluesky?: BlueskyPostOptions;
@@ -197,6 +223,8 @@ export interface UpdatePostParams {
   facebook?: Record<string, unknown>;
   linkedin?: Record<string, unknown>;
   linkedin_page?: Record<string, unknown>;
+  /** `null` clears the poll (revert to a normal post); omit to leave it untouched. */
+  linkedin_poll?: LinkedInPollInput | null;
   tiktok?: Record<string, unknown>;
   /** `thread_parts: null` clears thread mode; omit to leave it untouched. */
   x?: XPostOptionsUpdate;
@@ -273,6 +301,8 @@ export interface Post {
     thread_parts?: Array<{ id?: string; text: string; media_urls?: MediaUrlInput[] }>;
     [key: string]: unknown;
   };
+  /** Non-sponsored LinkedIn poll, echoed back when this post is one. */
+  linkedin_poll?: LinkedInPollInput | null;
   [key: string]: unknown;
 }
 

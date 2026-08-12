@@ -55,6 +55,8 @@ export type {
   MastodonThreadPartInput,
   MastodonPostOptions,
   MastodonPostOptionsUpdate,
+  LinkedInPollInput,
+  LinkedInPollFields,
   // Media
   MediaItem,
   PdfUploadResult,
