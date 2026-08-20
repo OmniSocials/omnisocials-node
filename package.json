@@ -1,6 +1,6 @@
 {
   "name": "@omnisocials/sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Official Node.js / TypeScript SDK for the OmniSocials API. Schedule and publish social media posts across 11 platforms.",
   "keywords": [
     "omnisocials",
