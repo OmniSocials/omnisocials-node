@@ -236,7 +236,7 @@ export interface UpdatePostParams {
 }
 
 export interface ListPostsParams {
-  /** Filter by status, e.g. "draft", "scheduled", "published", "failed". */
+  /** Filter by status: "draft", "in_approval", "scheduled", "posting", "published", "failed", "warning". "in_approval" = waiting for a reviewer in an approval workflow. */
   status?: string;
   /** Max items to return (default 20, max 100). */
   limit?: number;
@@ -249,6 +249,19 @@ export interface RecentPlatformPostsParams {
   limit?: number;
   /** Platforms to fetch, e.g. ["instagram", "x"] or "instagram,x". Omit for all connected. */
   platforms?: string | string[];
+}
+
+/** One published slide of a multi-slide story. */
+export interface StorySlide {
+  /** Zero-based slide position. */
+  index: number;
+  /** The slide's story id on the platform. */
+  native_post_id: string;
+  /** Story URL (valid for 24 hours). */
+  url: string | null;
+  media_url?: string | null;
+  media_type?: "image" | "video" | string | null;
+  published_at?: string | null;
 }
 
 export interface Post {
@@ -268,6 +281,11 @@ export interface Post {
   app_url: string;
   /** Live post URL per platform, present once published. */
   published_urls: Record<string, string>;
+  /**
+   * Stories only, after publishing: every slide per platform in publish
+   * order. `published_urls` keeps only the first slide's URL.
+   */
+  story_slides?: Record<string, StorySlide[]>;
   /** Instagram location tag (Facebook Place/Page ID), echoed when set. */
   location_id?: string;
   /** Instagram collaborators, echoed when set. */
@@ -585,7 +603,22 @@ export interface PostAnalyticsPlatformEntry {
   metrics: Record<string, number | string>;
   thread_parts: number;
   collected_at: string;
+  /**
+   * Multi-slide stories only: per-slide metrics in publish order
+   * (`metrics` above is the sum across slides).
+   */
+  story_slides?: PostAnalyticsStorySlide[];
   [key: string]: unknown;
+}
+
+/** One slide's own metrics inside a multi-slide story. */
+export interface PostAnalyticsStorySlide {
+  /** Zero-based slide position. */
+  index: number;
+  /** The slide's own story id on the platform. */
+  platform_post_id: string;
+  metrics: Record<string, number | string>;
+  collected_at: string;
 }
 
 export interface PostAnalytics {
