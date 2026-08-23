@@ -128,9 +128,9 @@ await client.posts.create({
 });
 ```
 
-### X thread
+### Chained threads (X, Bluesky, Mastodon, Threads)
 
-Provide 2 to 25 `thread_parts` to publish a chained thread instead of a single tweet. Each part is capped at 280 characters and can carry its own media. The same `thread_parts` shape works for `bluesky` (300 chars per part) and `mastodon` (500 chars per part).
+Provide 2 to 25 `thread_parts` to publish a chained thread instead of a single tweet. Each part is capped at 280 characters and can carry its own media. The same `thread_parts` shape works for `bluesky` (300 chars per part), `mastodon` (500 chars per part) and `threads` (Meta Threads: 2 to 25 parts, 500 characters per part, up to 10 media per part; parts after the first publish as replies to the previous part, and the Threads caption is taken from part 1).
 
 ```ts
 await client.posts.create({
@@ -143,6 +143,21 @@ await client.posts.create({
       { text: "1. We posted every single day, even when it felt pointless." },
       { text: "2. We replied to every comment within an hour." },
       { text: "3. Full breakdown on our blog. Link in bio." },
+    ],
+  },
+});
+```
+
+```ts
+// Meta Threads chain with a carousel on the first part
+await client.posts.create({
+  content: "Behind the scenes of our summer shoot",
+  channels: ["threads"],
+  threads: {
+    thread_parts: [
+      { text: "Behind the scenes of our summer shoot. A few highlights:", media_urls: ["https://example.com/shoot-1.jpg", "https://example.com/shoot-2.jpg"] },
+      { text: "Day one: scouting locations at sunrise." },
+      { text: "Day two: the full crew, 14 hours, zero regrets." },
     ],
   },
 });

@@ -55,6 +55,9 @@ export type {
   MastodonThreadPartInput,
   MastodonPostOptions,
   MastodonPostOptionsUpdate,
+  ThreadsThreadPartInput,
+  ThreadsPostOptions,
+  ThreadsPostOptionsUpdate,
   LinkedInPollInput,
   LinkedInPollFields,
   // Media

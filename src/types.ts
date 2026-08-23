@@ -124,6 +124,34 @@ export interface MastodonPostOptionsUpdate {
   thread_parts?: MastodonThreadPartInput[] | null;
 }
 
+// ─── Threads (Meta) options ──────────────────────────────────────────────────
+
+export interface ThreadsThreadPartInput {
+  /** Part text, 1 to 500 characters. */
+  text: string;
+  /** Optional per-part media as Library ids from media upload (max 10, images and/or videos). Entries accept `{ id, alt }` objects for per-media alt text. */
+  media_ids?: MediaIdInput[];
+  /** Optional per-part media as external URLs (max 10, images and/or videos). Entries accept `{ url, alt }` objects for per-media alt text. */
+  media_urls?: MediaUrlInput[];
+}
+
+export interface ThreadsPostOptions {
+  /**
+   * Provide 2-25 parts to publish as a chained thread; parts after the first
+   * publish as replies to the previous part. When set, the Threads caption is
+   * taken from part 1. Omit for a single post.
+   */
+  thread_parts?: ThreadsThreadPartInput[];
+}
+
+/**
+ * Update-side variant: `thread_parts: null` clears the thread (revert to a
+ * single post); `undefined` leaves the existing thread untouched.
+ */
+export interface ThreadsPostOptionsUpdate {
+  thread_parts?: ThreadsThreadPartInput[] | null;
+}
+
 /**
  * Non-sponsored LinkedIn poll (question + 2-4 options + duration). Mutually
  * exclusive with media and a link share on that channel's post — a poll
@@ -202,6 +230,7 @@ export interface CreatePostParams {
   x?: XPostOptions;
   bluesky?: BlueskyPostOptions;
   mastodon?: MastodonPostOptions;
+  threads?: ThreadsPostOptions;
   google_business?: Record<string, unknown>;
 }
 
@@ -232,6 +261,8 @@ export interface UpdatePostParams {
   bluesky?: BlueskyPostOptionsUpdate;
   /** `thread_parts: null` clears thread mode; omit to leave it untouched. */
   mastodon?: MastodonPostOptionsUpdate;
+  /** `thread_parts: null` clears thread mode; omit to leave it untouched. */
+  threads?: ThreadsPostOptionsUpdate;
   google_business?: Record<string, unknown>;
 }
 
@@ -316,6 +347,18 @@ export interface Post {
     reply_settings?: string;
     paid_partnership?: boolean;
     made_with_ai?: boolean;
+    thread_parts?: Array<{ id?: string; text: string; media_urls?: MediaUrlInput[] }>;
+    [key: string]: unknown;
+  };
+  bluesky?: {
+    thread_parts?: Array<{ id?: string; text: string; media_urls?: MediaUrlInput[] }>;
+    [key: string]: unknown;
+  };
+  mastodon?: {
+    thread_parts?: Array<{ id?: string; text: string; media_urls?: MediaUrlInput[] }>;
+    [key: string]: unknown;
+  };
+  threads?: {
     thread_parts?: Array<{ id?: string; text: string; media_urls?: MediaUrlInput[] }>;
     [key: string]: unknown;
   };
@@ -594,7 +637,7 @@ export interface AccountsListResponse extends ListResponse<Account> {
 
 /**
  * One entry per platform the post was published to. For thread platforms
- * (X, Bluesky, Mastodon) `metrics` is summed across all parts and
+ * (X, Bluesky, Mastodon, Threads) `metrics` is summed across all parts and
  * `platform_post_id` is the thread root; `thread_parts` is 1 for single posts.
  */
 export interface PostAnalyticsPlatformEntry {
