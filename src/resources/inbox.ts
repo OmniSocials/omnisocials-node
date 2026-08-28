@@ -15,8 +15,9 @@ export class InboxResource {
   /**
    * `GET /inbox/conversations` - list social inbox conversations (DMs,
    * comments, mentions) across connected platforms, newest activity first.
-   * TikTok conversations are video comments only (no DMs or mentions) and
-   * need the TikTok comments authorization on the channel.
+   * TikTok and YouTube conversations are video comments only (no DMs or
+   * mentions); TikTok needs the TikTok comments authorization on the
+   * channel.
    * Filter by `platform`, `type`, and `unread`. Uses cursor pagination: pass
    * the previous response's `pagination.next_cursor` as `cursor` to page on
    * while `pagination.has_more` is true.
@@ -67,7 +68,8 @@ export class InboxResource {
    * `attachment_type`. Returns the created outbound message.
    *
    * TikTok replies are comments only, text-only (no attachments), and capped
-   * at 150 characters.
+   * at 150 characters. YouTube replies are comments only (YouTube has no
+   * DMs).
    *
    * X DM replies cost 2 prepaid credits per send (X's per-request send fee,
    * passed through at cost), debited from the company balance before the

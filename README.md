@@ -450,7 +450,7 @@ app.post(
 
 ## Inbox
 
-Read and reply to your Instagram, Facebook, and LinkedIn Page DMs, comments, and mentions, plus TikTok video comments (needs the TikTok comments authorization on the channel) and X (Twitter) DMs once a workspace opts in. TikTok replies are comments only and capped at 150 characters. List and message endpoints use cursor pagination (`cursor` in, `pagination.next_cursor` out) instead of offset.
+Read and reply to your Instagram, Facebook, and LinkedIn Page DMs, comments, and mentions, plus TikTok video comments (needs the TikTok comments authorization on the channel), YouTube video comments, and X (Twitter) DMs once a workspace opts in. TikTok and YouTube replies are comments only; TikTok replies are capped at 150 characters. List and message endpoints use cursor pagination (`cursor` in, `pagination.next_cursor` out) instead of offset.
 
 ```ts
 const { data: conversations } = await client.inbox.listConversations({

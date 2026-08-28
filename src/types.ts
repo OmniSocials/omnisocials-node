@@ -906,7 +906,7 @@ export interface InboxConversation {
   conversation_id: string;
   /**
    * Platform identifier, e.g. "instagram", "facebook", "linkedin", "tiktok",
-   * "x".
+   * "youtube", "x".
    */
   platform: string;
   /** Conversation kind: "dm", "comment", or "mention". */
@@ -930,7 +930,7 @@ export interface InboxMessage {
   conversation_id: string;
   /**
    * Platform identifier, e.g. "instagram", "facebook", "linkedin", "tiktok",
-   * "x".
+   * "youtube", "x".
    */
   platform: string;
   /** Message kind: "dm", "comment", or "mention". */
@@ -952,7 +952,7 @@ export interface InboxMessage {
 
 export interface ListInboxConversationsParams {
   /** Filter by platform. */
-  platform?: "instagram" | "facebook" | "linkedin" | "tiktok" | "x";
+  platform?: "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube" | "x";
   /** Filter by conversation kind. */
   type?: "dm" | "comment" | "mention";
   /** Only return conversations with unread messages. */
