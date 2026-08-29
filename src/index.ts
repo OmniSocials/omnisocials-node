@@ -58,6 +58,7 @@ export type {
   ThreadsThreadPartInput,
   ThreadsPostOptions,
   ThreadsPostOptionsUpdate,
+  ThreadsLocationInput,
   LinkedInPollInput,
   LinkedInPollFields,
   // Media
@@ -93,6 +94,10 @@ export type {
   LocationSearchItem,
   LocationSearchResponse,
   LocationValidateResponse,
+  SearchLocationsParams,
+  ThreadsLocation,
+  ThreadsLocationSearchError,
+  ThreadsLocationSearchResponse,
   // Audio
   AudioTrack,
   AudioSearchResponse,
@@ -113,10 +118,12 @@ export type {
   ListInboxConversationsParams,
   ListInboxMessagesParams,
   ReplyInboxParams,
+  HideInboxParams,
   InboxConversationsResponse,
   InboxMessagesResponse,
   InboxMarkReadResponse,
   InboxReplyResponse,
+  InboxHideResponse,
   // Health
   HealthResponse,
 } from "./types.js";

@@ -135,6 +135,19 @@ export interface ThreadsThreadPartInput {
   media_urls?: MediaUrlInput[];
 }
 
+/**
+ * Object form of a Threads location tag: the id plus optional display fields
+ * to store along with it. `location_id` wins when both are given.
+ */
+export interface ThreadsLocationInput {
+  /** A Threads location id from `locations.search({ platform: "threads" })`. */
+  id: string;
+  name?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+}
+
 export interface ThreadsPostOptions {
   /**
    * Provide 2-25 parts to publish as a chained thread; parts after the first
@@ -142,14 +155,32 @@ export interface ThreadsPostOptions {
    * taken from part 1. Omit for a single post.
    */
   thread_parts?: ThreadsThreadPartInput[];
+  /**
+   * Threads location tag: a Threads location id from
+   * `locations.search({ platform: "threads" })` (a Facebook Place id is not
+   * a Threads location id). On a multi-post thread the tag is applied to
+   * part 1. Threads location tagging is currently rolling out; until Meta
+   * approves the permissions it is disabled on production and calls return
+   * a clear error.
+   */
+  location_id?: string;
+  /**
+   * Alternative to `location_id`: store display fields along with the id.
+   * `location_id` wins when both are given.
+   */
+  location?: ThreadsLocationInput;
 }
 
 /**
  * Update-side variant: `thread_parts: null` clears the thread (revert to a
- * single post); `undefined` leaves the existing thread untouched.
+ * single post); `undefined` leaves the existing thread untouched. The
+ * location tag works the same way: `location_id: null` (or `location: null`)
+ * clears it, `undefined` leaves it untouched.
  */
 export interface ThreadsPostOptionsUpdate {
   thread_parts?: ThreadsThreadPartInput[] | null;
+  location_id?: string | null;
+  location?: ThreadsLocationInput | null;
 }
 
 /**
@@ -360,6 +391,14 @@ export interface Post {
   };
   threads?: {
     thread_parts?: Array<{ id?: string; text: string; media_urls?: MediaUrlInput[] }>;
+    /** Threads location tag, present only when one is set. */
+    location?: {
+      id: string;
+      name?: string | null;
+      address?: string | null;
+      city?: string | null;
+      country?: string | null;
+    };
     [key: string]: unknown;
   };
   /** Non-sponsored LinkedIn poll, echoed back when this post is one. */
@@ -752,6 +791,66 @@ export interface LocationSearchResponse {
   [key: string]: unknown;
 }
 
+export interface SearchLocationsParams {
+  /** Search text (min 2 characters). Threads also accepts `latitude` + `longitude` instead. */
+  q?: string;
+  /**
+   * Location source: `"instagram"` (Facebook Places, the default) or
+   * `"threads"`. The two sources use different ids (a Facebook Place id is
+   * not a Threads location id).
+   */
+  platform?: "instagram" | "threads";
+  /** Threads only: search around a point instead of `q` (-90 to 90). Pair with `longitude`. */
+  latitude?: number;
+  /** Threads only: pair with `latitude` (-180 to 180). */
+  longitude?: number;
+}
+
+/** One Threads location from `locations.search({ platform: "threads" })`. */
+export interface ThreadsLocation {
+  /** The Threads location id; use it as `threads.location_id` on a post. */
+  id: string;
+  name: string | null;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  [key: string]: unknown;
+}
+
+/** The `error` object on a degraded Threads location search response. */
+export interface ThreadsLocationSearchError {
+  /**
+   * `"not_available"` (Threads location tagging is not enabled in this
+   * environment yet; it is rolling out), `"threads_not_connected"`,
+   * `"threads_reauth_required"` (the connection lacks the
+   * `threads_location_tagging` permission; reconnect Threads), or
+   * `"platform_error"`.
+   */
+  code:
+    | "not_available"
+    | "threads_not_connected"
+    | "threads_reauth_required"
+    | "platform_error"
+    | (string & {});
+  message: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Response of `locations.search({ platform: "threads" })`. Note the shape
+ * differs from the Instagram response: `locations` on success OR `error` on
+ * the degraded path. Validation problems (neither `q` nor
+ * `latitude`+`longitude`, `q` under 2 characters, coordinates out of range)
+ * throw a 400 `APIError` instead.
+ */
+export interface ThreadsLocationSearchResponse {
+  locations?: ThreadsLocation[];
+  error?: ThreadsLocationSearchError;
+  [key: string]: unknown;
+}
+
 export interface LocationValidateResponse {
   valid: boolean;
   id?: string | null;
@@ -906,7 +1005,7 @@ export interface InboxConversation {
   conversation_id: string;
   /**
    * Platform identifier, e.g. "instagram", "facebook", "linkedin", "tiktok",
-   * "youtube", "x".
+   * "youtube", "x", or "threads".
    */
   platform: string;
   /** Conversation kind: "dm", "comment", or "mention". */
@@ -930,7 +1029,7 @@ export interface InboxMessage {
   conversation_id: string;
   /**
    * Platform identifier, e.g. "instagram", "facebook", "linkedin", "tiktok",
-   * "youtube", "x".
+   * "youtube", "x", or "threads".
    */
   platform: string;
   /** Message kind: "dm", "comment", or "mention". */
@@ -945,6 +1044,13 @@ export interface InboxMessage {
   reaction: string | null;
   /** Parent comment id when this is a threaded comment reply. */
   parent_comment_id: string | null;
+  /**
+   * Threads replies only: `true` when the reply is hidden on Threads (see
+   * `inbox.hide`). `null` for every other platform/message.
+   */
+  hidden: boolean | null;
+  /** Link to the reply or mentioning post on the platform, when known. */
+  permalink: string | null;
   sender: InboxParticipant;
   /** The related post for comment/mention messages; null for DMs. */
   post: InboxPostRef | null;
@@ -952,7 +1058,14 @@ export interface InboxMessage {
 
 export interface ListInboxConversationsParams {
   /** Filter by platform. */
-  platform?: "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube" | "x";
+  platform?:
+    | "instagram"
+    | "facebook"
+    | "linkedin"
+    | "tiktok"
+    | "youtube"
+    | "x"
+    | "threads";
   /** Filter by conversation kind. */
   type?: "dm" | "comment" | "mention";
   /** Only return conversations with unread messages. */
@@ -1002,6 +1115,18 @@ export interface InboxMarkReadResponse {
 
 /** Single-item envelope for the message created by a reply. */
 export interface InboxReplyResponse {
+  data: InboxMessage;
+  message?: string;
+  [key: string]: unknown;
+}
+
+export interface HideInboxParams {
+  /** `true` hides the reply, `false` unhides it. Defaults to `true`. */
+  hide?: boolean;
+}
+
+/** Single-item envelope for the message returned by `inbox.hide`. */
+export interface InboxHideResponse {
   data: InboxMessage;
   message?: string;
   [key: string]: unknown;

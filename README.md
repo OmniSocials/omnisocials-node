@@ -165,6 +165,8 @@ await client.posts.create({
 
 On update, pass `thread_parts: null` to clear thread mode (revert to a single post); omit it to leave the existing thread untouched.
 
+Threads posts can also carry a location tag: pass `threads.location_id`, a Threads location id from `client.locations.search({ platform: "threads", q: "..." })` (Instagram Place ids are not interchangeable). On a multi-part thread the tag lands on part 1; on update, `location_id: null` clears it. Threads location tagging is currently rolling out; until Meta approves the permissions it is disabled on production and calls return a clear error.
+
 ### X link posts use credits
 
 X bills API posts whose text contains a URL at a premium, and OmniSocials passes that fee through as prepaid credits (20 credits per URL-containing tweet; threads billed per part with a link). When a create targets X and the text contains a URL, the response carries an optional top-level `warnings` array (a sibling of `data`, typed as `PostWarning[]`):
@@ -368,7 +370,7 @@ const best = await client.analytics.bestTimes({
 });
 ```
 
-## Locations (Instagram place tagging)
+## Locations (Instagram and Threads location tagging)
 
 ```ts
 const results = await client.locations.search("Griffith Observatory");
@@ -382,6 +384,22 @@ if (check.valid) {
     media_urls: ["https://example.com/observatory.jpg"],
     location_id: place.id,
     scheduled_at: "2026-08-01T18:30:00Z",
+  });
+}
+```
+
+Threads locations use their own ids (a Facebook Place id is not a Threads location id) and a different response shape. Search by text, or by coordinates instead of `q`, and pass a result's `id` as `threads.location_id` on the post. Threads location tagging is currently rolling out; until Meta approves the permissions it is disabled on production and calls return a clear error.
+
+```ts
+const spots = await client.locations.search({ platform: "threads", q: "Griffith Observatory" });
+// or around a point: { platform: "threads", latitude: 34.1184, longitude: -118.3004 }
+
+if (spots.locations?.length) {
+  await client.posts.create({
+    content: "Golden hour at the observatory",
+    channels: ["threads"],
+    media_urls: ["https://example.com/observatory.jpg"],
+    threads: { location_id: spots.locations[0].id },
   });
 }
 ```
@@ -450,7 +468,7 @@ app.post(
 
 ## Inbox
 
-Read and reply to your Instagram, Facebook, and LinkedIn Page DMs, comments, and mentions, plus TikTok video comments (needs the TikTok comments authorization on the channel), YouTube video comments, and X (Twitter) DMs once a workspace opts in. TikTok and YouTube replies are comments only; TikTok replies are capped at 150 characters. List and message endpoints use cursor pagination (`cursor` in, `pagination.next_cursor` out) instead of offset.
+Read and reply to your Instagram, Facebook, and LinkedIn Page DMs, comments, and mentions, plus TikTok and YouTube video comments (TikTok needs the TikTok comments authorization on the channel), X (Twitter) DMs once a workspace opts in, and Threads replies and mentions (no Threads DMs). TikTok and YouTube replies are comments only; TikTok replies are capped at 150 characters. List and message endpoints use cursor pagination (`cursor` in, `pagination.next_cursor` out) instead of offset. Threads inbox is currently rolling out; until Meta approves the permissions it is disabled on production, and it needs a Threads connection with the reply permission.
 
 ```ts
 const { data: conversations } = await client.inbox.listConversations({
@@ -465,6 +483,10 @@ await client.inbox.markRead(conversations[0].conversation_id);
 await client.inbox.reply(conversations[0].conversation_id, {
   text: "Yes, we ship worldwide!",
 });
+
+// Threads only: hide a reply someone left on one of your posts
+// (pass { hide: false } to unhide; only top-level replies can be hidden)
+await client.inbox.hide(messages[0].id);
 ```
 
 ### X DM reply credits
