@@ -51,7 +51,7 @@ export type MediaIdInput = string | { id: string; alt?: string };
 // ─── X (Twitter) options ─────────────────────────────────────────────────────
 
 export interface XThreadPartInput {
-  /** Tweet text, up to 280 chars (the API enforces 280 even for X Premium). */
+  /** Tweet text, up to 280 chars standard, 25,000 for X Premium/Premium+ accounts. */
   text: string;
   /** Optional per-part media as Library ids from media upload (max 4 combined with media_urls). Entries accept `{ id, alt }` objects for per-media alt text. */
   media_ids?: MediaIdInput[];
