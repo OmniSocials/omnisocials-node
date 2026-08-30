@@ -450,6 +450,23 @@ export interface PostRetryResult {
   message: string;
 }
 
+/** `data` payload of `POST /posts/:id/approve`. */
+export interface PostApproveResult {
+  id: string;
+  /** Post status after this call: "in_approval" (more steps remain), "scheduled", or "posting". */
+  status: string;
+  approval_status: "pending" | "approved";
+  message?: string;
+}
+
+/** `data` payload of `POST /posts/:id/reject`. */
+export interface PostRejectResult {
+  id: string;
+  status: "rejected";
+  approval_status: "rejected";
+  message?: string;
+}
+
 // ─── Media ───────────────────────────────────────────────────────────────────
 
 export interface MediaItem {
@@ -1051,6 +1068,13 @@ export interface InboxMessage {
   hidden: boolean | null;
   /** Link to the reply or mentioning post on the platform, when known. */
   permalink: string | null;
+  /**
+   * Media on this message, when present. Incoming Instagram/Facebook DM
+   * images, videos, voice messages, and story mentions are re-hosted on our
+   * CDN so the URL stays valid indefinitely (the platform's own URL is
+   * short-lived). `null` when the message has no media.
+   */
+  attachment: { url: string; type: "image" | "video" | "audio" | "file" } | null;
   sender: InboxParticipant;
   /** The related post for comment/mention messages; null for DMs. */
   post: InboxPostRef | null;
@@ -1084,9 +1108,11 @@ export interface ListInboxMessagesParams {
 }
 
 export interface ReplyInboxParams {
-  /** Reply text (required). */
-  text: string;
-  /** Public URL of a single media asset to attach. */
+  /** Reply text. Optional when `attachment_url` is set — an attachment-only
+   * reply is allowed. */
+  text?: string;
+  /** Public URL of a single media asset to attach (Facebook and Instagram
+   * DMs only; other platforms are text-only). */
   attachment_url?: string;
   /** Attachment kind; pair with `attachment_url`. */
   attachment_type?: "image" | "video" | "audio" | "file";

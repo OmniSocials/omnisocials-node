@@ -71,9 +71,11 @@ export class InboxResource {
 
   /**
    * `POST /inbox/conversations/:conversationId/reply` - send a reply into the
-   * conversation (a DM message, or a reply to the comment/mention). Optionally
-   * attach a single media asset by public URL with `attachment_url` +
-   * `attachment_type`. Returns the created outbound message.
+   * conversation (a DM message, or a reply to the comment/mention). On
+   * Facebook and Instagram DMs, optionally attach a single media asset by
+   * public URL with `attachment_url` + `attachment_type`; `text` is optional
+   * when `attachment_url` is set (an attachment-only reply is allowed).
+   * Returns the created outbound message.
    *
    * TikTok replies are comments only, text-only (no attachments), and capped
    * at 150 characters. YouTube replies are comments only (YouTube has no

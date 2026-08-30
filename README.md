@@ -199,6 +199,15 @@ await client.posts.delete(one.id);  // resolves to null (204)
 
 `retry` re-publishes only the platforms that failed, on the same post; platforms that already succeeded are never posted again. It is asynchronous: a 200 means the retry is queued, so poll `get` for the outcome. Max 3 retries per platform.
 
+### Approve or reject a post
+
+```ts
+await client.posts.approve(one.id);                              // approve the current approval-workflow step
+await client.posts.reject(one.id, "Wrong CTA link, please fix."); // reject and stop the workflow (comment optional)
+```
+
+Only works on a post with `approval_status: "pending"` (`status: "in_approval"`). Both act on behalf of the user who owns the API key, who must be a listed approver for the workflow's CURRENT step — steps approve in order, so being an approver on a later step is not enough yet (returns a `403 forbidden` `APIError`). Approving the last step finalizes the post (`scheduled` or `posting`); rejecting stops the whole workflow immediately, not just the current step.
+
 ### Recent platform posts
 
 Fetch recent posts live from the connected platform APIs, including content published outside OmniSocials. Useful for brand-new workspaces where `list()` is empty. Requires the `analytics:read` scope. Each record includes `duration_seconds` (integer, nullable): the video length in whole seconds where the platform reports it — currently TikTok and YouTube; `null` for images and for platforms that don't expose it.

@@ -6,6 +6,8 @@ import type {
   ListPostsParams,
   ListResponse,
   Post,
+  PostApproveResult,
+  PostRejectResult,
   PostRetryResult,
   RecentPlatformPostsParams,
   UpdatePostParams,
@@ -98,5 +100,34 @@ export class PostsResource {
    */
   retry(id: string): Promise<ItemResponse<PostRetryResult>> {
     return this.client.post(`/posts/${encodeURIComponent(id)}/retry`);
+  }
+
+  /**
+   * `POST /posts/:id/approve` - approve the current step of a post's
+   * approval workflow, on behalf of the user who owns this API key. That
+   * user must be a listed approver for the workflow's CURRENT step - steps
+   * approve in order, so an approver on a later step gets a `forbidden`
+   * error until earlier steps clear. Only works on a post with
+   * `approval_status: "pending"`. Approving the last step finalizes the
+   * post immediately (`scheduled` or `posting`); otherwise it stays
+   * `in_approval` and the next step's approvers are notified.
+   */
+  approve(id: string): Promise<ItemResponse<PostApproveResult>> {
+    return this.client.post(`/posts/${encodeURIComponent(id)}/approve`);
+  }
+
+  /**
+   * `POST /posts/:id/reject` - reject a post's approval workflow, on behalf
+   * of the user who owns this API key. Same approver requirement as
+   * {@link approve}. Unlike approval, a rejection stops the WHOLE workflow
+   * immediately (not just the current step) - the post's status becomes
+   * `rejected`. `comment` is optional and, when given, is shown to the
+   * requester and other approvers in the post's review thread.
+   */
+  reject(id: string, comment?: string): Promise<ItemResponse<PostRejectResult>> {
+    return this.client.post(
+      `/posts/${encodeURIComponent(id)}/reject`,
+      comment ? { comment } : undefined
+    );
   }
 }
