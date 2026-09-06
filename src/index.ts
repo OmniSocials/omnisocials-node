@@ -120,11 +120,17 @@ export type {
   ListInboxMessagesParams,
   ReplyInboxParams,
   HideInboxParams,
+  InboxNextParams,
+  InboxPlatform,
   InboxConversationsResponse,
   InboxMessagesResponse,
   InboxMarkReadResponse,
   InboxReplyResponse,
   InboxHideResponse,
+  InboxDeletedMessage,
+  InboxDeleteMessageResponse,
+  InboxNextUnanswered,
+  InboxNextResponse,
   // Health
   HealthResponse,
 } from "./types.js";

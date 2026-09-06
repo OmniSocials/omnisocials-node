@@ -1051,12 +1051,36 @@ export interface InboxParticipant {
   profile_picture: string | null;
 }
 
-/** The post a comment/mention conversation is attached to (null for DMs). */
+/**
+ * The post a comment/mention conversation is attached to (null for DMs), so a
+ * reply can be drafted with the post in view.
+ */
 export interface InboxPostRef {
   id: string | null;
   caption: string | null;
+  /** Image URL of the post (or the video's cover). */
   thumbnail: string | null;
+  /**
+   * Public link to the post when the platform provides one (Instagram,
+   * Facebook, YouTube, TikTok, LinkedIn, Threads); `null` otherwise.
+   */
+  url: string | null;
+  /**
+   * The platform's own media label when known (e.g. `IMAGE`, `VIDEO`,
+   * `CAROUSEL_ALBUM` on Instagram); `null` otherwise.
+   */
+  media_type: string | null;
 }
+
+/** Inbox platform identifier. */
+export type InboxPlatform =
+  | "instagram"
+  | "facebook"
+  | "linkedin"
+  | "tiktok"
+  | "youtube"
+  | "x"
+  | "threads";
 
 export interface InboxConversation {
   conversation_id: string;
@@ -1102,8 +1126,9 @@ export interface InboxMessage {
   /** Parent comment id when this is a threaded comment reply. */
   parent_comment_id: string | null;
   /**
-   * Threads replies only: `true` when the reply is hidden on Threads (see
-   * `inbox.hide`). `null` for every other platform/message.
+   * Comments and mentions only: `true` when the comment is hidden on the
+   * platform (see `inbox.hide`), `false` when it is not. `null` for DMs,
+   * which have no notion of hidden.
    */
   hidden: boolean | null;
   /** Link to the reply or mentioning post on the platform, when known. */
@@ -1122,18 +1147,20 @@ export interface InboxMessage {
 
 export interface ListInboxConversationsParams {
   /** Filter by platform. */
-  platform?:
-    | "instagram"
-    | "facebook"
-    | "linkedin"
-    | "tiktok"
-    | "youtube"
-    | "x"
-    | "threads";
+  platform?: InboxPlatform;
   /** Filter by conversation kind. */
   type?: "dm" | "comment" | "mention";
   /** Only return conversations with unread messages. */
   unread?: boolean;
+  /**
+   * Only return conversations that still need an answer: the customer's
+   * latest DM has no reply after it (Instagram/Facebook DMs within the
+   * 24-hour messaging window only), or a comment/mention that has not been
+   * replied to and is not hidden. Replies typed in the native apps count as
+   * answers (they are mirrored into the inbox). Read state is ignored here;
+   * use `inbox.next()` for a work queue.
+   */
+  unanswered?: boolean;
   /** Max items to return (1-100). */
   limit?: number;
   /** Opaque cursor from a previous response's `pagination.next_cursor`. */
@@ -1156,6 +1183,13 @@ export interface ReplyInboxParams {
   attachment_url?: string;
   /** Attachment kind; pair with `attachment_url`. */
   attachment_type?: "image" | "video" | "audio" | "file";
+  /**
+   * When `true`, the response also carries `next` (the next conversation
+   * that needs an answer, the same object as `inbox.next()`'s `data`, using
+   * its default queue order and filters) and `remaining`. Saves the extra
+   * call when working through the inbox.
+   */
+  include_next?: boolean;
 }
 
 /** List envelope for inbox conversations (cursor-paginated). */
@@ -1183,6 +1217,17 @@ export interface InboxMarkReadResponse {
 export interface InboxReplyResponse {
   data: InboxMessage;
   message?: string;
+  /**
+   * Only when `include_next` was set: the next conversation that needs an
+   * answer (the same object as `inbox.next()`'s `data`), or `null` when
+   * nothing is waiting.
+   */
+  next?: InboxNextUnanswered | null;
+  /**
+   * Only when `include_next` was set: unanswered items still waiting after
+   * `next` (capped at 500).
+   */
+  remaining?: number;
   [key: string]: unknown;
 }
 
@@ -1195,6 +1240,76 @@ export interface HideInboxParams {
 export interface InboxHideResponse {
   data: InboxMessage;
   message?: string;
+  [key: string]: unknown;
+}
+
+/** The `data` of `inbox.deleteMessage()`. */
+export interface InboxDeletedMessage {
+  /** The deleted message id. */
+  id: string;
+  conversation_id: string;
+  /** Inbox ids of replies removed together with the comment. */
+  removed_reply_ids: string[];
+}
+
+/** Response envelope for `inbox.deleteMessage()`. */
+export interface InboxDeleteMessageResponse {
+  data: InboxDeletedMessage;
+  [key: string]: unknown;
+}
+
+/** Query params for `inbox.next()`. All optional. */
+export interface InboxNextParams {
+  /** Only items from one platform. */
+  platform?: InboxPlatform;
+  /** Only items of one type. */
+  type?: "dm" | "comment" | "mention";
+  /**
+   * `"oldest"` (default) serves the item that has waited longest first;
+   * `"newest"` the most recent.
+   */
+  order?: "oldest" | "newest";
+  /**
+   * Also serve items that were marked read but never answered. Defaults to
+   * `false`: only unread items are served, so marking a conversation read is
+   * the durable way to skip it.
+   */
+  include_read?: boolean;
+  /**
+   * Conversation ids to leave out of this call (a session-local skip; up to
+   * 100). Sent comma-separated.
+   */
+  exclude?: string[];
+}
+
+/**
+ * The next conversation that needs an answer, with everything needed to
+ * draft the reply.
+ */
+export interface InboxNextUnanswered {
+  conversation: InboxConversation;
+  /**
+   * The unanswered incoming message itself: the customer's latest DM, or the
+   * specific comment. Its `id` is what `inbox.hide` and `inbox.deleteMessage`
+   * take; its `conversation_id` is what `inbox.reply` takes.
+   */
+  message: InboxMessage;
+  /**
+   * The conversation so far, oldest first (the most recent 50 messages for
+   * long DM threads).
+   */
+  messages: InboxMessage[];
+}
+
+/** Response envelope for `inbox.next()`. */
+export interface InboxNextResponse {
+  /** The next item, or `null` when nothing is waiting. */
+  data: InboxNextUnanswered | null;
+  /**
+   * Unanswered items still waiting after this one (capped at 500). `0` when
+   * `data` is `null`.
+   */
+  remaining: number;
   [key: string]: unknown;
 }
 
