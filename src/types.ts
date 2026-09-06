@@ -250,6 +250,15 @@ export interface CreatePostParams {
   hashtag_placement?: "caption_append" | "first_comment";
   /** Restrict the hashtags to a subset of the post's channels. Omit for all. */
   hashtag_platforms?: string[];
+  /**
+   * Route the post through a saved approval workflow (id from
+   * `approvalWorkflows.list()`). The post is created as `in_approval`
+   * (`approval_status: "pending"`) instead of `scheduled`; its approvers are
+   * notified and it publishes at `scheduled_at` once the last step approves
+   * (dashboard, or `posts.approve`). Requires `scheduled_at`; not allowed
+   * with `publish_now`. Errors: `404 workflow_not_found`, `400 validation_error`.
+   */
+  approval_workflow_id?: string;
   pinterest?: Record<string, unknown>;
   youtube?: Record<string, unknown>;
   instagram?: Record<string, unknown>;
@@ -621,6 +630,37 @@ export interface UpdateFolderParams {
   name?: string;
   /** Move under this folder; `null` moves it to the top level. */
   parent_id?: string | null;
+}
+
+// ─── Approval workflows ──────────────────────────────────────────────────────
+
+export interface ApprovalWorkflowApprover {
+  /** User id of the approver. */
+  id: string;
+  name: string | null;
+  email: string | null;
+}
+
+export interface ApprovalWorkflowStep {
+  /** 1-based step order; steps are approved in order. */
+  order: number;
+  name: string;
+  /** `any` = one approver of the step is enough; `all` = every approver must approve. */
+  require_mode: "any" | "all";
+  approvers: ApprovalWorkflowApprover[];
+}
+
+/** A saved approval workflow (configured in the dashboard under Approvals). */
+export interface ApprovalWorkflow {
+  /** Pass as `approval_workflow_id` on `posts.create`. */
+  id: string;
+  name: string;
+  /** Workspace the workflow is bound to, or `null` when it is company-wide. */
+  workspace_id: number | null;
+  steps: ApprovalWorkflowStep[];
+  created_at: string;
+  updated_at: string;
+  [key: string]: unknown;
 }
 
 // ─── Hashtag sets ────────────────────────────────────────────────────────────

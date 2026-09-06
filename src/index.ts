@@ -22,6 +22,7 @@ export { PostsResource } from "./resources/posts.js";
 export { MediaResource } from "./resources/media.js";
 export { FoldersResource } from "./resources/folders.js";
 export { HashtagSetsResource } from "./resources/hashtag-sets.js";
+export { ApprovalWorkflowsResource } from "./resources/approval-workflows.js";
 export { AccountsResource } from "./resources/accounts.js";
 export { AnalyticsResource } from "./resources/analytics.js";
 export { LocationsResource } from "./resources/locations.js";
