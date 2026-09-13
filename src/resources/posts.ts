@@ -81,7 +81,7 @@ export class PostsResource {
     return this.client.patch(`/posts/${encodeURIComponent(id)}`, params);
   }
 
-  /** `DELETE /posts/:id` - delete a post. Resolves to `null` (204). */
+  /** `DELETE /posts/:id` - remove a post from OmniSocials (the live post stays on the platform). Resolves to `null` (204). */
   delete(id: string): Promise<null> {
     return this.client.delete(`/posts/${encodeURIComponent(id)}`);
   }
