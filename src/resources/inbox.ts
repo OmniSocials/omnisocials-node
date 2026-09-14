@@ -25,10 +25,9 @@ export class InboxResource {
    * channel. Threads conversations are `type` `"comment"` (replies people
    * leave on your Threads posts; `conversation_id` looks like
    * `threads_comment_<rootPostId>`) and `"mention"`
-   * (`threads_mention_<postId>`); there are no Threads DMs. Threads inbox is
-   * currently rolling out; until Meta approves the permissions it is
-   * disabled on production, and it needs a Threads connection with the reply
-   * permission.
+   * (`threads_mention_<postId>`); there are no Threads DMs. The Threads inbox
+   * needs a Threads connection with the reply permissions; connections made
+   * before those permissions existed must be reconnected once.
    * Filter by `platform`, `type`, `unread`, and `unanswered` (only
    * conversations that still need an answer; see
    * `ListInboxConversationsParams.unanswered`). Uses cursor pagination: pass
@@ -95,11 +94,10 @@ export class InboxResource {
    * balance; top up and re-enable it in the dashboard to resume - DMs that
    * arrive while suspended are not recovered).
    *
-   * Threads replies publish as native Threads replies. Threads inbox is
-   * currently rolling out; until Meta approves the permissions it is
-   * disabled on production, and it needs a Threads connection with the reply
-   * permission: a 401 `reauth_required` means the connection lacks it
-   * (reconnect Threads).
+   * Threads replies publish as native Threads replies. The Threads inbox
+   * needs a Threads connection with the reply permission: a 401
+   * `reauth_required` means the connection lacks it (connected before it
+   * existed; reconnect Threads).
    *
    * Pass `include_next: true` to also get `next` (the next conversation that
    * needs an answer, the same object as `inbox.next()`'s `data`, using its
@@ -140,9 +138,9 @@ export class InboxResource {
    * `not_found` (message not in this workspace) or `account_not_connected`,
    * 429 `quota_exceeded` (YouTube's daily API quota is used up; retry after
    * midnight Pacific), 502 `platform_error` (the platform rejected the
-   * call). Threads inbox is currently rolling out; until Meta approves the
-   * permissions it is disabled on production and Threads calls return a
-   * clear error.
+   * call). The Threads inbox needs a Threads connection with the reply
+   * permissions; a connection made before those permissions existed
+   * answers 401 `reauth_required` until reconnected.
    */
   hide(
     messageId: string,
