@@ -217,6 +217,26 @@ export interface UserTag {
   image_index?: number;
 }
 
+/** One video-cover choice: a frame offset or a custom image. */
+export interface VideoCoverEntry {
+  type: "frame" | "custom";
+  /** Milliseconds into the video (type "frame"), e.g. 3000 = 0:03. */
+  thumb_offset?: number;
+  /** Public image URL, JPEG or PNG (type "custom"). */
+  cover_url?: string;
+}
+
+/**
+ * Video thumbnail for a post whose media is one video. Applied on Instagram
+ * (feed videos and reels), Facebook (feed videos and reels), LinkedIn Profile
+ * and Page, TikTok (frame only), Pinterest and YouTube Shorts. `overrides`
+ * wins over the base cover for that platform; on update a `null` override
+ * entry drops it.
+ */
+export interface VideoCover extends VideoCoverEntry {
+  overrides?: Record<string, VideoCoverEntry | null>;
+}
+
 export interface CreatePostParams {
   /** Caption. Either a single string or a per-platform map with a `default` key. */
   content: string | Record<string, string>;
@@ -238,6 +258,8 @@ export interface CreatePostParams {
   location_id?: string;
   collaborators?: string[];
   user_tags?: UserTag[];
+  /** Video thumbnail (frame offset or custom image, optional per-platform overrides). */
+  video_cover?: VideoCover;
   /**
    * Name of a saved hashtag set (case-insensitive). Applies the set once at
    * create time; tags already in a caption are skipped; Instagram's
@@ -286,6 +308,8 @@ export interface UpdatePostParams {
   location_id?: string;
   collaborators?: string[];
   user_tags?: UserTag[];
+  /** Replaces the stored video cover wholesale; `null` removes it; omit to leave it untouched. */
+  video_cover?: VideoCover | null;
   pinterest?: Record<string, unknown>;
   youtube?: Record<string, unknown>;
   instagram?: Record<string, unknown>;
@@ -363,6 +387,8 @@ export interface Post {
   collaborators?: string[];
   /** Instagram photo user tags, echoed when set. */
   user_tags?: Array<{ username: string; x: number; y: number; image_index?: number }>;
+  /** Stored video thumbnail (base + per-platform overrides); null when none was chosen. */
+  video_cover?: VideoCover | null;
   source?: string | null;
   /**
    * Present when this post was created by the dashboard "retry as new post"
