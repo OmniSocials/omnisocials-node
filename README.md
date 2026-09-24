@@ -504,7 +504,7 @@ await client.inbox.deleteMessage(messages[0].id);
 
 ### Work queue: what needs an answer
 
-`inbox.next()` hands out the next conversation that still needs a reply (the customer's latest DM with no reply after it, or an unreplied comment/mention that is not hidden), with the whole thread and the post it belongs to (`post.url`, `post.media_type`), so a reply can be drafted from one call. Replies typed in the native apps count as answers. Only unread items are served by default, so `markRead` is the durable way to skip one; `exclude` skips conversation ids for the current session only. Pass `include_next: true` to `reply()` to get the following item in the same response. `listConversations({ unanswered: true })` gives the same set as a plain list.
+`inbox.next()` hands out the next conversation that still needs a reply (the customer's latest DM with no reply after it, or an unreplied comment/mention that is not hidden), with the whole thread and the post it belongs to (`post.url`, `post.media_type`), so a reply can be drafted from one call. DMs that can still be answered come first, then Instagram/Facebook DMs whose 24-hour window has closed (`reply_window.open` is `false`: answer those from the native app or mark them read), then comments and mentions, oldest first. Replies typed in the native apps count as answers. Only unread items are served by default, so `markRead` is the durable way to skip one; `exclude` skips conversation ids for the current session only. Always pass `message_id: item.message.id` to `reply()` on comment threads: every comment on a post shares one conversation, and without it the reply goes under the newest comment on the post. Pass `include_next: true` to `reply()` to get the following item in the same response. `listConversations({ unanswered: true })` gives the same set as a plain list.
 
 ```ts
 let { data: item, remaining } = await client.inbox.next({ platform: "instagram" });
@@ -512,8 +512,17 @@ while (item) {
   console.log(`${remaining} left. ${item.message.sender.username}: ${item.message.text}`);
   console.log("post:", item.conversation.post?.url, item.conversation.post?.media_type);
 
+  if (!item.reply_window.open) {
+    // An Instagram/Facebook DM past Meta's 24-hour window: reply() would
+    // answer 422 outside_messaging_window. Answer it in the app, or skip it.
+    await client.inbox.markRead(item.message.conversation_id);
+    ({ data: item, remaining } = await client.inbox.next({ platform: "instagram" }));
+    continue;
+  }
+
   const reply = await client.inbox.reply(item.message.conversation_id, {
     text: "Thanks! DM sent.",
+    message_id: item.message.id, // the comment being answered, not the newest one
     include_next: true,
   });
   item = reply.next ?? null;

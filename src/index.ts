@@ -130,6 +130,7 @@ export type {
   InboxDeletedMessage,
   InboxDeleteMessageResponse,
   InboxNextUnanswered,
+  InboxReplyWindow,
   InboxNextResponse,
   // Health
   HealthResponse,

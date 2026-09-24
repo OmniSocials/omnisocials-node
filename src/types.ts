@@ -1180,11 +1180,12 @@ export interface ListInboxConversationsParams {
   unread?: boolean;
   /**
    * Only return conversations that still need an answer: the customer's
-   * latest DM has no reply after it (Instagram/Facebook DMs within the
-   * 24-hour messaging window only), or a comment/mention that has not been
-   * replied to and is not hidden. Replies typed in the native apps count as
-   * answers (they are mirrored into the inbox). Read state is ignored here;
-   * use `inbox.next()` for a work queue.
+   * latest DM has no reply after it (Instagram/Facebook DMs past Meta's
+   * 24-hour messaging window included: they cannot be answered through the
+   * API, but the customer is still waiting), or a comment/mention that has
+   * not been replied to and is not hidden. Replies typed in the native apps
+   * count as answers (they are mirrored into the inbox). Read state is
+   * ignored here; use `inbox.next()` for a work queue.
    */
   unanswered?: boolean;
   /** Max items to return (1-100). */
@@ -1209,6 +1210,17 @@ export interface ReplyInboxParams {
   attachment_url?: string;
   /** Attachment kind; pair with `attachment_url`. */
   attachment_type?: "image" | "video" | "audio" | "file";
+  /**
+   * For comment and mention threads: the inbox id of the specific incoming
+   * comment being answered (`message.id` from `inbox.next()`, or a message
+   * `id` from `inbox.getMessages()`). Every comment on a post shares one
+   * conversation, so without it the reply is posted under the newest
+   * comment on the post, which may be a different person than the one you
+   * drafted for. Always pass it when replying to an item served by the
+   * queue. Ignored for DMs (a DM reply goes to the conversation). 404
+   * `not_found` when it is not an incoming message of this conversation.
+   */
+  message_id?: string;
   /**
    * When `true`, the response also carries `next` (the next conversation
    * that needs an answer, the same object as `inbox.next()`'s `data`, using
@@ -1309,6 +1321,27 @@ export interface InboxNextParams {
 }
 
 /**
+ * Whether a reply can still be sent through the API. Only Instagram and
+ * Facebook DMs have a window (Meta: 24 hours after the customer's last
+ * message); every other item has `open: true` and `closes_at: null`.
+ */
+export interface InboxReplyWindow {
+  /**
+   * `false` when the item is an Instagram/Facebook DM whose 24-hour window
+   * has closed. It is still served (the customer is still waiting), but
+   * `inbox.reply` answers 422 `outside_messaging_window`: answer it from
+   * the Instagram or Facebook app (that reply is mirrored into the inbox
+   * and clears the item) or mark the conversation read to skip it.
+   */
+  open: boolean;
+  /**
+   * When the window closes or closed (the customer's last message + 24 h);
+   * `null` when there is no window.
+   */
+  closes_at: string | null;
+}
+
+/**
  * The next conversation that needs an answer, with everything needed to
  * draft the reply.
  */
@@ -1317,7 +1350,9 @@ export interface InboxNextUnanswered {
   /**
    * The unanswered incoming message itself: the customer's latest DM, or the
    * specific comment. Its `id` is what `inbox.hide` and `inbox.deleteMessage`
-   * take; its `conversation_id` is what `inbox.reply` takes.
+   * take, and the `message_id` to pass to `inbox.reply` on comment threads
+   * (so the reply lands under this comment, not under the newest one on the
+   * post); its `conversation_id` is what `inbox.reply` takes.
    */
   message: InboxMessage;
   /**
@@ -1325,6 +1360,8 @@ export interface InboxNextUnanswered {
    * long DM threads).
    */
   messages: InboxMessage[];
+  /** Whether `inbox.reply` can still answer this item; see `InboxReplyWindow`. */
+  reply_window: InboxReplyWindow;
 }
 
 /** Response envelope for `inbox.next()`. */
