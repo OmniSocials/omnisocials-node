@@ -508,6 +508,7 @@ export interface MediaItem {
   id: string;
   url: string;
   thumbnail_url?: string | null;
+  /** "image", "video" or "document" (a PDF kept as one item). */
   type: string;
   name?: string | null;
   filename: string;
@@ -516,16 +517,36 @@ export interface MediaItem {
   size: string;
   status?: string;
   created_at: string;
+  /**
+   * Present on a PDF document item (type "document": the kept file plus its
+   * rendered `pages`) and on a slide rendered from a PDF (type "image": which
+   * file and `page` it came from). LinkedIn receives the original when the
+   * pages are posted unchanged (see `document_source` on the LinkedIn options).
+   */
+  pdf?: {
+    id: string;
+    name: string;
+    url: string;
+    /** Slides only: the 1-based page this image renders. */
+    page?: number;
+    total_pages: number;
+    rendered_pages: number;
+    /** Document items only. */
+    truncated?: boolean;
+    /** Document items only: the rendered page images, in order. */
+    pages?: Array<{ url: string; width?: number | null; height?: number | null }>;
+  };
   [key: string]: unknown;
 }
 
 /**
  * Extra top-level fields returned by media uploads when the file is a PDF.
- * A PDF is rasterized into one image slide per page (max 20): `data` mirrors
- * the first slide (back-compat) while `slides` + `media_ids` carry the whole
- * carousel in page order. Pass ALL of `media_ids` to posts.create. On LinkedIn
- * the slides post as a native swipeable document; elsewhere as an image
- * carousel.
+ * A PDF is rasterized into one image slide per page (max 20) and the original
+ * file is kept: `data` mirrors the first slide (back-compat) while `slides` +
+ * `media_ids` carry the whole carousel in page order. Pass ALL of `media_ids`
+ * to posts.create. On LinkedIn the slides post as a native swipeable document
+ * made from the original PDF (unless the post's `linkedin.document_source` is
+ * `"slides"`); elsewhere as an image carousel.
  */
 export interface PdfUploadResult {
   slides: MediaItem[];
@@ -534,6 +555,11 @@ export interface PdfUploadResult {
     total_pages: number;
     rendered_pages: number;
     truncated: boolean;
+    /** The kept original PDF. */
+    id?: string;
+    name?: string;
+    url?: string;
+    size_bytes?: number;
   };
 }
 
@@ -573,6 +599,12 @@ export interface UploadMediaParams {
   folder?: string;
   /** Id of an existing folder to file the asset under. */
   folder_id?: string;
+  /**
+   * PDF uploads only. "slides" (default): one image item per page, one id
+   * each (pass all of media_ids). "document": one item of type "document"
+   * for the whole PDF; its single id in media_ids expands into every page.
+   */
+  pdf_mode?: "slides" | "document";
 }
 
 export interface UploadMediaFromUrlParams {
@@ -585,6 +617,12 @@ export interface UploadMediaFromUrlParams {
   folder?: string;
   /** Id of an existing folder to file the asset under. */
   folder_id?: string;
+  /**
+   * PDF uploads only. "slides" (default): one image item per page, one id
+   * each (pass all of media_ids). "document": one item of type "document"
+   * for the whole PDF; its single id in media_ids expands into every page.
+   */
+  pdf_mode?: "slides" | "document";
 }
 
 export interface UploadMediaFromBase64Params {
@@ -599,6 +637,12 @@ export interface UploadMediaFromBase64Params {
   folder?: string;
   /** Id of an existing folder to file the asset under. */
   folder_id?: string;
+  /**
+   * PDF uploads only. "slides" (default): one image item per page, one id
+   * each (pass all of media_ids). "document": one item of type "document"
+   * for the whole PDF; its single id in media_ids expands into every page.
+   */
+  pdf_mode?: "slides" | "document";
 }
 
 /**
