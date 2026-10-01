@@ -229,9 +229,9 @@ export interface VideoCoverEntry {
 /**
  * Video thumbnail for a post whose media is one video. Applied on Instagram
  * (feed videos and reels), Facebook (feed videos and reels), LinkedIn Profile
- * and Page, TikTok (frame only) and Pinterest. On YouTube Shorts the cover is
- * stored as the default thumbnail, but YouTube shows a frame from the video
- * on Shorts. `overrides` wins over the base cover for that platform; on
+ * and Page, TikTok (frame only), Pinterest and YouTube Shorts (shown on
+ * Shorts only on channels where YouTube has enabled custom Shorts
+ * thumbnails). `overrides` wins over the base cover for that platform; on
  * update a `null` override entry drops it.
  */
 export interface VideoCover extends VideoCoverEntry {
