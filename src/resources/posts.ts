@@ -6,6 +6,7 @@ import type {
   ListPostsParams,
   ListResponse,
   Post,
+  PostApproval,
   PostApproveResult,
   PostRejectResult,
   PostRetryResult,
@@ -129,5 +130,18 @@ export class PostsResource {
       `/posts/${encodeURIComponent(id)}/reject`,
       comment ? { comment } : undefined
     );
+  }
+
+  /**
+   * `GET /posts/:id/approval` - the approval review of a post: every step
+   * with its approvers and their decisions, the rejection with its reason,
+   * and the comment thread. Use it when `approval_status` is `rejected` to
+   * learn who rejected the post and why, or while it is `pending` to see
+   * who the post waits for. A post without an approval workflow returns
+   * `status: "none"` with empty `steps` and `comments`. Read-only; requires
+   * the `posts:read` scope.
+   */
+  getApproval(id: string): Promise<ItemResponse<PostApproval>> {
+    return this.client.get(`/posts/${encodeURIComponent(id)}/approval`);
   }
 }

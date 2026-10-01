@@ -503,6 +503,78 @@ export interface PostRejectResult {
   message?: string;
 }
 
+/** A person named in a post's approval review: `id` is the user id. */
+export interface PostApprovalUser {
+  id: string;
+  name: string | null;
+}
+
+/** One approver on a step of a post's approval review. */
+export interface PostApprovalApprover {
+  /** User id of the approver. */
+  id: string;
+  name: string | null;
+  email: string | null;
+  status: "pending" | "approved" | "rejected";
+  /** When this approver decided; `null` while pending. */
+  decided_at: string | null;
+  /** The reason this approver gave with a rejection; `null` otherwise. */
+  comment: string | null;
+}
+
+/** One step of a post's approval review. */
+export interface PostApprovalStep {
+  /** 1-based step order; steps are approved in order. */
+  order: number;
+  name: string;
+  /** `any` = one approver of the step is enough; `all` = every approver must approve. */
+  require_mode: "any" | "all";
+  status: "pending" | "approved" | "rejected";
+  approvers: PostApprovalApprover[];
+}
+
+/** Who rejected the post, why, when, and on which step. */
+export interface PostApprovalRejection {
+  by: PostApprovalUser;
+  reason: string | null;
+  at: string | null;
+  /** Order of the step the rejection happened on. */
+  step: number | null;
+}
+
+/** One entry of the review thread. */
+export interface PostApprovalComment {
+  id: string;
+  /** `null` when the author is not known. */
+  author: PostApprovalUser | null;
+  message: string;
+  /** The channel the comment is about (`instagram`, `linkedin_page`, ...); `null` = the whole post. */
+  account: string | null;
+  created_at: string;
+}
+
+/** `data` payload of `GET /posts/:id/approval`: the approval review of a post. */
+export interface PostApproval {
+  post_id: string;
+  /**
+   * `none` = the post has no approval workflow; then `workflow`,
+   * `requested_by`, `requested_at`, `current_step` and `rejection` are
+   * `null` and `steps` and `comments` are empty.
+   */
+  status: "none" | "pending" | "approved" | "rejected";
+  /** `workflow.id` is `null` for a one-off approval that was not made from a saved workflow. */
+  workflow: { id: string | null; name: string } | null;
+  requested_by: PostApprovalUser | null;
+  requested_at: string | null;
+  /** Order of the step the post waits on; `null` when the review ended. */
+  current_step: number | null;
+  steps: PostApprovalStep[];
+  /** Set when an approver rejected the post; `null` otherwise. */
+  rejection: PostApprovalRejection | null;
+  /** The review thread, oldest first. Includes the entries OmniSocials writes when a reviewer edits the post. */
+  comments: PostApprovalComment[];
+}
+
 // ─── Media ───────────────────────────────────────────────────────────────────
 
 export interface MediaItem {
@@ -1025,7 +1097,12 @@ export interface AudioSearchResponse {
 
 // ─── Webhooks (management) ───────────────────────────────────────────────────
 
-export type WebhookEventType = "post.scheduled" | "post.published" | "post.failed";
+export type WebhookEventType =
+  | "post.scheduled"
+  | "post.published"
+  | "post.failed"
+  | "post.approved"
+  | "post.rejected";
 
 export interface Webhook {
   id: string;
@@ -1049,7 +1126,7 @@ export interface Webhook {
 export interface CreateWebhookParams {
   /** HTTPS endpoint that will receive event deliveries. */
   url: string;
-  /** Events to subscribe to: post.scheduled, post.published, post.failed. */
+  /** Events to subscribe to: post.scheduled, post.published, post.failed, post.approved, post.rejected. */
   events: string[];
 }
 
@@ -1081,6 +1158,15 @@ export interface WebhookEventTarget {
   [key: string]: unknown;
 }
 
+/** The `data.approval` object on `post.approved` and `post.rejected` deliveries. */
+export interface WebhookEventApproval {
+  status: "approved" | "rejected";
+  /** User id of the approver who gave the last approval, or who rejected. */
+  decided_by: string;
+  /** The reason given with a rejection; always `null` on `post.approved`. */
+  reason: string | null;
+}
+
 /** The JSON object POSTed to your webhook endpoint (and returned by verifyWebhookSignature). */
 export interface WebhookEvent {
   /** Unique delivery id. */
@@ -1094,7 +1180,10 @@ export interface WebhookEvent {
     post_type: string | null;
     scheduled_at: string | null;
     published_at: string | null;
+    /** Empty on `post.scheduled`, `post.approved` and `post.rejected`. */
     targets: WebhookEventTarget[];
+    /** Only on `post.approved` and `post.rejected`. */
+    approval?: WebhookEventApproval;
     [key: string]: unknown;
   };
   [key: string]: unknown;

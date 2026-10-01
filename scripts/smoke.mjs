@@ -45,7 +45,7 @@ assert.equal(client.timeout, 30000);
 
 // Resource method surface (every endpoint in the DESIGN.md inventory).
 const surface = {
-  posts: ["list", "get", "recentPlatform", "create", "createAndPublish", "update", "delete", "publish"],
+  posts: ["list", "get", "recentPlatform", "create", "createAndPublish", "update", "delete", "publish", "approve", "reject", "getApproval"],
   media: ["list", "get", "upload", "uploadFromUrl", "uploadFromBase64", "createUploadUrl", "check", "update", "delete"],
   folders: ["list", "create", "update", "delete"],
   hashtagSets: ["list", "get", "create", "update", "delete"],
@@ -139,6 +139,32 @@ const staleOk = verifyWebhookSignature({
   tolerance: 7200,
 });
 assert.equal(staleOk.type, "post.published");
+
+// A post.rejected delivery keeps its `approval` object.
+const rejectedBody = JSON.stringify({
+  id: "e7c9a1b2-3d4e-4f6a-8b8c-9d0e1f2a3b4c",
+  type: "post.rejected",
+  created_at: new Date().toISOString(),
+  data: {
+    post_id: "123456",
+    workspace_id: 789,
+    status: "rejected",
+    post_type: "Post",
+    scheduled_at: "2026-10-03T14:00:00.000Z",
+    published_at: null,
+    targets: [],
+    approval: { status: "rejected", decided_by: "c4a09e1d", reason: "Wrong product photo" },
+  },
+});
+const rejectedEvent = verifyWebhookSignature({
+  payload: rejectedBody,
+  signature: sign(timestamp, rejectedBody),
+  secret,
+});
+assert.equal(rejectedEvent.type, "post.rejected");
+assert.equal(rejectedEvent.data.approval.status, "rejected");
+assert.equal(rejectedEvent.data.approval.reason, "Wrong product photo");
+assert.deepEqual(rejectedEvent.data.targets, []);
 
 // 4. Wrong secret is rejected.
 assert.throws(
