@@ -496,7 +496,7 @@ app.post(
 
 ## Inbox
 
-Read and reply to your Instagram, Facebook, and LinkedIn Page DMs, comments, and mentions, plus TikTok and YouTube video comments (TikTok needs the TikTok comments authorization on the channel), X (Twitter) DMs once a workspace opts in, and Threads replies and mentions (no Threads DMs). TikTok and YouTube replies are comments only; TikTok replies are capped at 150 characters. List and message endpoints use cursor pagination (`cursor` in, `pagination.next_cursor` out) instead of offset. Threads inbox is currently rolling out; until Meta approves the permissions it is disabled on production, and it needs a Threads connection with the reply permission.
+Read and reply to your Instagram, Facebook, and LinkedIn Page DMs, comments, and mentions, plus TikTok and YouTube video comments (TikTok needs the TikTok comments authorization on the channel), X (Twitter) DMs once a workspace opts in, and Threads replies and mentions (no Threads DMs). TikTok and YouTube replies are comments only; TikTok replies are capped at 150 characters. List and message endpoints use cursor pagination (`cursor` in, `pagination.next_cursor` out) instead of offset. The Threads inbox needs a Threads connection with the reply permission: a Threads account connected before 2026-09-14 needs a one-time reconnect in the dashboard (until then replies and hides answer 401 `reauth_required`).
 
 ```ts
 const { data: conversations } = await client.inbox.listConversations({
