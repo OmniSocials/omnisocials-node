@@ -282,6 +282,16 @@ export interface CreatePostParams {
    * with `publish_now`. Errors: `404 workflow_not_found`, `400 validation_error`.
    */
   approval_workflow_id?: string;
+  /**
+   * Pinterest options (`board_id`, `title`, `link`, `alt_text`, ...).
+   * `product_tags` tags products on the Pin: up to 24 product Pins of the
+   * connected Pinterest account, each as a Pin id string (see
+   * `pinterest.listProducts()`) or a Pin link. Products of other merchants
+   * cannot be tagged. The tags are added right after the Pin is published; a
+   * product Pinterest refuses never fails the post (see
+   * {@link PinterestProductTagsResult}). More than 24 entries or an invalid
+   * entry returns `400 validation_error`.
+   */
   pinterest?: Record<string, unknown>;
   youtube?: Record<string, unknown>;
   instagram?: Record<string, unknown>;
@@ -311,6 +321,10 @@ export interface UpdatePostParams {
   user_tags?: UserTag[];
   /** Replaces the stored video cover wholesale; `null` removes it; omit to leave it untouched. */
   video_cover?: VideoCover | null;
+  /**
+   * Replaces the stored Pinterest options wholesale, so leave `product_tags`
+   * out (or send `[]`) to remove the product tags.
+   */
   pinterest?: Record<string, unknown>;
   youtube?: Record<string, unknown>;
   instagram?: Record<string, unknown>;
@@ -435,6 +449,13 @@ export interface Post {
       city?: string | null;
       country?: string | null;
     };
+    [key: string]: unknown;
+  };
+  pinterest?: {
+    /** Product Pin ids tagged on the Pin, echoed when set. */
+    product_tags?: string[];
+    /** Present on a published post that had `product_tags`. */
+    product_tags_result?: PinterestProductTagsResult;
     [key: string]: unknown;
   };
   /** Non-sponsored LinkedIn poll, echoed back when this post is one. */
@@ -1093,6 +1114,132 @@ export interface AudioSearchResponse {
    */
   needsFacebook?: boolean;
   [key: string]: unknown;
+}
+
+// ─── Pinterest ───────────────────────────────────────────────────────────────
+
+/** One product Pin from `pinterest.listProducts()`. */
+export interface PinterestProduct {
+  /** The Pin id; use it in `pinterest.product_tags` on a post. */
+  pin_id: string;
+  title: string | null;
+  description: string | null;
+  /** The product page the Pin links to. */
+  link: string | null;
+  /** A small image of the product Pin. */
+  image_url: string | null;
+  /** Catalog source only. */
+  price: number | null;
+  /** Catalog source only. ISO 4217 code, e.g. "EUR". */
+  currency: string | null;
+  /** Catalog source only, as Pinterest reports it (e.g. "IN_STOCK", "OUT_OF_STOCK"). */
+  availability: string | null;
+  /** Catalog source only. The merchant's own product id. */
+  item_id: string | null;
+  [key: string]: unknown;
+}
+
+/** One catalog product group on a `pinterest.listProducts()` response. */
+export interface PinterestProductGroup {
+  id: string;
+  name: string | null;
+  [key: string]: unknown;
+}
+
+export interface ListPinterestProductsParams {
+  /**
+   * Where to read product Pins from: `"catalog"` (the Pinterest catalog,
+   * needs catalog access) or `"pins"` (the account's own Pins). Default:
+   * `"catalog"` when the connection has catalog access, else `"pins"`.
+   */
+  source?: "catalog" | "pins";
+  /**
+   * Catalog source only: a product group `id` from `product_groups`.
+   * Default: the group named "All Products", else the first group.
+   */
+  product_group_id?: string;
+  /** Cursor from the previous response, to get the next page. */
+  bookmark?: string;
+  /** Catalog source only: products per page (1 to 100, default 25). */
+  page_size?: number;
+}
+
+/** The `error` object on a `pinterest.listProducts()` response that has no `products`. */
+export interface PinterestProductsError {
+  /**
+   * `"pinterest_not_connected"` (no Pinterest account on the workspace),
+   * `"pinterest_catalog_access_required"` (`source: "catalog"` was asked but
+   * the connection has no catalog access; connect the catalog in the
+   * composer or use `source: "pins"`), or `"platform_error"` (Pinterest did
+   * not answer or refused; the message carries Pinterest's text).
+   */
+  code:
+    | "pinterest_not_connected"
+    | "pinterest_catalog_access_required"
+    | "platform_error"
+    | (string & {});
+  message: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Response of `pinterest.listProducts()`. Note the shape is NOT the usual
+ * `{ data }` envelope: `products` on success OR `error` when the list could
+ * not be read (no Pinterest account, no catalog access, Pinterest did not
+ * answer), both with HTTP 200. Validation problems (a `source` that is not
+ * `"catalog"` or `"pins"`, an unknown `product_group_id`) throw a 400
+ * `APIError` instead.
+ */
+export interface PinterestProductsResponse {
+  products?: PinterestProduct[];
+  /** Pass as `bookmark` to get the next page. `null` on the last page. */
+  bookmark?: string | null;
+  /** The source that was read. */
+  source?: "catalog" | "pins";
+  /** true when the Pinterest connection can read the catalog. */
+  catalog_access?: boolean;
+  /** Catalog source only: the product groups of the account. */
+  product_groups?: PinterestProductGroup[];
+  /** Catalog source only: the group these products come from. */
+  product_group_id?: string | null;
+  error?: PinterestProductsError;
+  [key: string]: unknown;
+}
+
+export interface PinterestProductValidateResponse {
+  valid: boolean;
+  /** The Pin id read from `id` (`null` when `id` is not a Pin id or link). */
+  pin_id: string | null;
+  title?: string | null;
+  link?: string | null;
+  image_url?: string | null;
+  /** Couldn't be checked now; the publish step is the final check. */
+  unverified?: boolean;
+  /** Why the Pin isn't valid / couldn't be checked. */
+  reason?: string | null;
+  [key: string]: unknown;
+}
+
+/**
+ * Read-only `pinterest.product_tags_result` on a published post that had
+ * `product_tags`: what Pinterest did with them. A product Pinterest refuses
+ * never fails the post.
+ */
+export interface PinterestProductTagsResult {
+  /** Number of products that were sent. */
+  requested: number;
+  /** Pin ids that are tagged on the Pin. */
+  tagged: string[];
+  /**
+   * Products that were not tagged. `reason` is Pinterest's code:
+   * `PIN_MISSING`, `PIN_IS_PRIVATE`, `PRODUCT_METADATA_MISSING` (not a
+   * product Pin), `PIN_NOT_FROM_VERIFIED_DOMAIN` (the product link is not on
+   * a claimed website), `PIN_NOT_FROM_SAME_USER_AS_HERO_PIN` (Pin of another
+   * account).
+   */
+  skipped: Array<{ pin_id: string; reason: string }>;
+  /** Set when the tag request itself failed; `tagged` is then empty. */
+  error: string | null;
 }
 
 // ─── Webhooks (management) ───────────────────────────────────────────────────

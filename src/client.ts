@@ -13,10 +13,11 @@ import { AccountsResource } from "./resources/accounts.js";
 import { AnalyticsResource } from "./resources/analytics.js";
 import { LocationsResource } from "./resources/locations.js";
 import { AudioResource } from "./resources/audio.js";
+import { PinterestResource } from "./resources/pinterest.js";
 import { WebhooksResource } from "./resources/webhooks.js";
 import { InboxResource } from "./resources/inbox.js";
 
-export const VERSION = "0.8.0";
+export const VERSION = "0.9.0";
 
 const DEFAULT_BASE_URL = "https://api.omnisocials.com/v1";
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -77,6 +78,7 @@ export class OmniSocials {
   readonly analytics: AnalyticsResource;
   readonly locations: LocationsResource;
   readonly audio: AudioResource;
+  readonly pinterest: PinterestResource;
   readonly webhooks: WebhooksResource;
   readonly inbox: InboxResource;
 
@@ -110,6 +112,7 @@ export class OmniSocials {
     this.analytics = new AnalyticsResource(this);
     this.locations = new LocationsResource(this);
     this.audio = new AudioResource(this);
+    this.pinterest = new PinterestResource(this);
     this.webhooks = new WebhooksResource(this);
     this.inbox = new InboxResource(this);
   }

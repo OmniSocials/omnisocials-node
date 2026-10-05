@@ -27,6 +27,7 @@ export { AccountsResource } from "./resources/accounts.js";
 export { AnalyticsResource } from "./resources/analytics.js";
 export { LocationsResource } from "./resources/locations.js";
 export { AudioResource } from "./resources/audio.js";
+export { PinterestResource } from "./resources/pinterest.js";
 export { WebhooksResource } from "./resources/webhooks.js";
 export { InboxResource } from "./resources/inbox.js";
 
@@ -108,6 +109,14 @@ export type {
   // Audio
   AudioTrack,
   AudioSearchResponse,
+  // Pinterest
+  PinterestProduct,
+  PinterestProductGroup,
+  ListPinterestProductsParams,
+  PinterestProductsError,
+  PinterestProductsResponse,
+  PinterestProductValidateResponse,
+  PinterestProductTagsResult,
   // Webhooks
   Webhook,
   WebhookEventType,

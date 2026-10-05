@@ -427,6 +427,32 @@ if (spots.locations?.length) {
 }
 ```
 
+## Pinterest product tags
+
+Tag products on a Pin so people can shop the items in the image. `client.pinterest.listProducts()` returns the product Pins of the connected Pinterest account; pass their `pin_id` values (max 24) as `pinterest.product_tags` on the post. Only product Pins of your own account can be tagged; products of other merchants cannot. The tags are added right after the Pin is published. A product that Pinterest refuses never fails the post: the outcome is on the post as `pinterest.product_tags_result` (`requested`, `tagged`, `skipped`, `error`).
+
+```ts
+const list = await client.pinterest.listProducts();
+
+if (list.error) {
+  // HTTP 200 without `products`: pinterest_not_connected,
+  // pinterest_catalog_access_required or platform_error
+  console.warn(list.error.code, list.error.message);
+} else {
+  const productTags = (list.products ?? []).slice(0, 3).map((product) => product.pin_id);
+
+  await client.posts.create({
+    content: "Our summer picks",
+    channels: ["pinterest"],
+    media_urls: ["https://example.com/summer-look.jpg"],
+    scheduled_at: "2026-08-01T09:00:00Z",
+    pinterest: { board_id: "1234567890", title: "Summer picks", product_tags: productTags },
+  });
+}
+```
+
+Without `source` the list reads the Pinterest catalog (with `price`, `currency`, `availability` and `item_id`) when the connection has catalog access, else the account's own Pins. Catalog access is given one time in the OmniSocials composer: Pinterest options, Add products, Connect catalog. `source: "pins"` scans up to 250 Pins per call, so `products` can be empty while `bookmark` is set; call again with `{ bookmark: list.bookmark }`. To check one Pin id or Pin link before you post, call `client.pinterest.validateProduct("813744226420795884")`. On `posts.update()` the `pinterest` object replaces the stored one, so leave `product_tags` out to remove the tags.
+
 ## Webhooks
 
 Events: `post.scheduled`, `post.published`, `post.failed`, `post.approved` (the last step of a post's approval workflow is approved) and `post.rejected` (an approver rejects the post; it will not publish). The two approval events carry `data.approval` with `status`, `decided_by` (the approver's user id) and `reason` (`null` on `post.approved`), and an empty `data.targets`.
