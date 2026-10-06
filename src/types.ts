@@ -1198,6 +1198,9 @@ export interface PinterestProductsResponse {
   source?: "catalog" | "pins";
   /** true when the Pinterest connection can read the catalog. */
   catalog_access?: boolean;
+  /** The connection has catalog access but the Pinterest account has no
+   * catalog yet; `products` and `product_groups` are empty. */
+  no_catalog?: boolean;
   /** Catalog source only: the product groups of the account. */
   product_groups?: PinterestProductGroup[];
   /** Catalog source only: the group these products come from. */
