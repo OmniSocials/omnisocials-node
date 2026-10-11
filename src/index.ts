@@ -28,6 +28,7 @@ export { AnalyticsResource } from "./resources/analytics.js";
 export { LocationsResource } from "./resources/locations.js";
 export { AudioResource } from "./resources/audio.js";
 export { PinterestResource } from "./resources/pinterest.js";
+export { AutomationsResource } from "./resources/automations.js";
 export { WebhooksResource } from "./resources/webhooks.js";
 export { InboxResource } from "./resources/inbox.js";
 
@@ -40,6 +41,8 @@ export type {
   Post,
   PostWarning,
   CreatePostResponse,
+  UpdatePostResponse,
+  MediaFitMode,
   PostApproval,
   PostApprovalUser,
   PostApprovalApprover,
@@ -80,6 +83,8 @@ export type {
   UploadMediaFromBase64Params,
   CreateUploadUrlResponse,
   CheckMediaParams,
+  MediaCheckFit,
+  MediaCheckResponse,
   UpdateMediaParams,
   // Folders
   Folder,
@@ -117,6 +122,27 @@ export type {
   PinterestProductsResponse,
   PinterestProductValidateResponse,
   PinterestProductTagsResult,
+  // Automations (comment-to-DM)
+  Automation,
+  AutomationTriggerKind,
+  AutomationMatch,
+  AutomationStatus,
+  AutomationEventOutcome,
+  AutomationTrigger,
+  AutomationActions,
+  AutomationLimits,
+  AutomationStats,
+  AutomationPost,
+  AutomationEvent,
+  AutomationEventsResponse,
+  AutomationTriggerInput,
+  AutomationActionsInput,
+  AutomationLimitsInput,
+  CreateAutomationParams,
+  UpdateAutomationParams,
+  ListAutomationsParams,
+  ListAutomationEventsParams,
+  CommentDmAutomationInput,
   // Webhooks
   Webhook,
   WebhookEventType,

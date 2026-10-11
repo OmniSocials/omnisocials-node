@@ -5,6 +5,7 @@ import type {
   ItemResponse,
   ListMediaParams,
   ListResponse,
+  MediaCheckResponse,
   MediaItem,
   MediaUploadResponse,
   UpdateMediaParams,
@@ -97,9 +98,12 @@ export class MediaResource {
   /**
    * `POST /media/check` - preflight a file's compatibility with the
    * workspace's connected platforms BEFORE uploading. Provide one of: a
-   * public `url`, an existing `media_id`, or `size_bytes` + `mime`.
+   * public `url`, an existing `media_id`, or `size_bytes` + `mime`. For an
+   * image of known size (a library item), `fit` says per connected channel
+   * whether a feed post shows it whole or cuts it, and what a post create
+   * does about it (see `media_fit` on `posts.create`).
    */
-  check(params: CheckMediaParams): Promise<Record<string, unknown>> {
+  check(params: CheckMediaParams): Promise<MediaCheckResponse> {
     return this.client.post("/media/check", params);
   }
 

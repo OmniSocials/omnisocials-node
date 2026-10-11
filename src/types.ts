@@ -238,6 +238,12 @@ export interface VideoCover extends VideoCoverEntry {
   overrides?: Record<string, VideoCoverEntry | null>;
 }
 
+/**
+ * One channel's value in `media_fit`: `auto` takes the channel's rule,
+ * `crop` crops the image to the channel's window, `keep` sends the original.
+ */
+export type MediaFitMode = "auto" | "crop" | "keep";
+
 export interface CreatePostParams {
   /** Caption. Either a single string or a per-platform map with a `default` key. */
   content: string | Record<string, string>;
@@ -283,6 +289,38 @@ export interface CreatePostParams {
    */
   approval_workflow_id?: string;
   /**
+   * Planned draft. With `scheduled_at`, the post is stored as `draft` and
+   * keeps that time: it shows on the dashboard calendar at that slot with a
+   * dashed outline, the scheduler never publishes it, and a person schedules
+   * it from the composer (or you do with `update` and `draft: false`). Use it
+   * when an agent proposes a slot that a human should confirm. Not allowed
+   * with `publish_now` or `approval_workflow_id` (`400 validation_error`).
+   * Without `scheduled_at` it changes nothing: that post is a draft already.
+   */
+  draft?: boolean;
+  /**
+   * Image fit per channel for feed images whose ratio is outside what a
+   * channel shows uncropped, keyed by platform id (`instagram`,
+   * `pinterest`, ...). `auto` (default): Instagram crops a tall or wide
+   * image to 4:5 / 1.91:1 around the subject (Instagram cuts it to that
+   * window anyway and Meta cannot boost a feed post outside it); Pinterest
+   * keeps a Pin taller than 2:3 and reports it. `crop` / `keep` force it per
+   * channel. Decisions come back in `warnings` with code `image_fit`.
+   */
+  media_fit?: Record<string, MediaFitMode>;
+  /**
+   * Comment-to-DM automation bound to this post (Instagram must be in
+   * `channels`): a keyword in a comment is answered with a DM, once per
+   * person, with an optional public reply under the comment. See
+   * {@link CommentDmAutomationInput} for the shape. Needs the
+   * `automations:write` scope on the key (`403 insufficient_scope`, checked
+   * before anything else); a bad object is a `400 validation_error` whose
+   * message starts with `comment_dm_automation: `. The response carries
+   * `data.comment_dm_automation` (the {@link Automation}, with `post: null`);
+   * it starts listening once the post is live on Instagram.
+   */
+  comment_dm_automation?: CommentDmAutomationInput | null;
+  /**
    * Pinterest options (`board_id`, `title`, `link`, `alt_text`, ...).
    * `product_tags` tags products on the Pin: up to 24 product Pins of the
    * connected Pinterest account, each as a Pin id string (see
@@ -310,6 +348,30 @@ export interface CreatePostParams {
 export interface UpdatePostParams {
   content?: string | Record<string, string>;
   scheduled_at?: string;
+  /**
+   * Planned-draft switch. `false` without `scheduled_at` schedules a draft at
+   * the `scheduled_at` it already carries (`400 validation_error` when it has
+   * none or it is in the past). `true` without `scheduled_at` unschedules a
+   * scheduled post: it keeps its time and stays on the calendar as a dashed
+   * draft, nothing publishes; a post waiting for approval leaves its
+   * workflow. `true` with `scheduled_at` moves the time and keeps (or makes)
+   * the post a draft.
+   */
+  draft?: boolean;
+  /**
+   * Image fit per channel (same shape as {@link CreatePostParams.media_fit}).
+   * On update, `media_fit` alone re-decides the stored images (`keep` gives
+   * the original back). Decisions come back in `warnings` with code
+   * `image_fit`.
+   */
+  media_fit?: Record<string, MediaFitMode>;
+  /**
+   * Comment-to-DM automation on this post (same shape as on
+   * {@link CreatePostParams.comment_dm_automation}): an object replaces the
+   * post's automation, `null` removes it, omit to leave it untouched. Needs
+   * the `automations:write` scope.
+   */
+  comment_dm_automation?: CommentDmAutomationInput | null;
   channels?: string[];
   /** Entries accept `{ id, alt }` objects for per-media alt text. */
   media_ids?: MediaIdInput[] | Record<string, MediaIdInput[]>;
@@ -382,7 +444,14 @@ export interface Post {
   type?: string;
   /** Platform identifiers this post targets (e.g. ["instagram", "x"]). */
   accounts: string[];
-  /** Attached media: a flat array shared across platforms, or a per-platform map (`default` key + platform overrides). Items include an optional `alt` accessibility description when one was set. */
+  /**
+   * Attached media: a flat array shared across platforms, or a per-platform
+   * map (`default` key + platform overrides). Items include an optional `alt`
+   * accessibility description when one was set. A channel entry decided by
+   * `media_fit` also carries `fit` (`"crop"` | `"keep"`) and, when cropped,
+   * `crop` (`{ of, id?, ratio, focus: { x, y } | null }`: the original it was
+   * cut from, the crop's ratio and the focus point).
+   */
   media: unknown[] | Record<string, unknown[]>;
   /** ISO datetime the post is/was scheduled for, or null. */
   schedule_at: string | null;
@@ -460,22 +529,32 @@ export interface Post {
   };
   /** Non-sponsored LinkedIn poll, echoed back when this post is one. */
   linkedin_poll?: LinkedInPollInput | null;
+  /**
+   * On a post that goes to Instagram (`posts.get()`, and the create / update
+   * response when the request carried the field): the comment-to-DM
+   * automation bound to this post, with `post: null`, or `null` when it has
+   * none.
+   */
+  comment_dm_automation?: Automation | null;
   [key: string]: unknown;
 }
 
 /**
- * One entry of the optional top-level `warnings` array on post create
- * responses (a sibling of `data`, omitted when there is nothing to warn
- * about). Currently only `x_url_post_credits`: X bills API posts whose text
+ * One entry of the optional top-level `warnings` array on post create and
+ * update responses (a sibling of `data`, omitted when there is nothing to
+ * warn about). Two codes. `x_url_post_credits`: X bills API posts whose text
  * contains a URL at a premium, and OmniSocials passes that through as prepaid
  * credits (20 credits per URL-containing tweet; threads billed per part with
  * a link). Debiting starts at `enforce_from` (2026-08-14); if the company
  * balance can't cover it at publish time, only the X target fails and can be
  * retried after topping up in the dashboard (Settings -> Organisation ->
- * Billing -> Credits). Posts without links stay free.
+ * Billing -> Credits). Posts without links stay free. `image_fit`: a feed
+ * image whose ratio is outside what a channel shows uncropped; `action` says
+ * what was done for that channel (see `media_fit` on the params), with
+ * `platform`, `media_url`, `ratio`, `target` and `crop_url`.
  */
 export interface PostWarning {
-  /** Warning identifier, e.g. "x_url_post_credits". */
+  /** Warning identifier: "x_url_post_credits" or "image_fit". */
   code: string;
   /** Human-readable explanation. */
   message: string;
@@ -487,6 +566,18 @@ export interface PostWarning {
   enforced?: boolean;
   /** ISO date enforcement starts, e.g. "2026-08-14". */
   enforce_from?: string;
+  /** `image_fit`: the channel the decision is for, e.g. "instagram". */
+  platform?: string;
+  /** `image_fit`: the original image. */
+  media_url?: string;
+  /** `image_fit`: the image's ratio, e.g. "9:16". */
+  ratio?: string;
+  /** `image_fit`: the channel's window, e.g. "4:5". */
+  target?: string;
+  /** `image_fit`: what happened for that channel. */
+  action?: "cropped" | "kept" | "crop_failed";
+  /** `image_fit`: the cropped file when `action` is "cropped". */
+  crop_url?: string;
 }
 
 /** Response of `posts.create` / `posts.createAndPublish`: `{ data, warnings? }`. */
@@ -494,6 +585,13 @@ export interface CreatePostResponse extends ItemResponse<Post> {
   /** Non-blocking notices about this post; see {@link PostWarning}. */
   warnings?: PostWarning[];
 }
+
+/**
+ * Response of `posts.update`: `{ data, warnings? }`. The same envelope as
+ * {@link CreatePostResponse}; `warnings` carries the `image_fit` decisions
+ * when the update changes the images or `media_fit`.
+ */
+export type UpdatePostResponse = CreatePostResponse;
 
 /** `data` payload of `POST /posts/:id/retry`. */
 export interface PostRetryResult {
@@ -609,6 +707,10 @@ export interface MediaItem {
   folder_id?: string | null;
   /** Human-formatted size string (e.g. "2.50 MB"), not a byte count. */
   size: string;
+  /** Pixel width; null for videos and older files. */
+  width?: number | null;
+  /** Pixel height; null for videos and older files. */
+  height?: number | null;
   status?: string;
   created_at: string;
   /**
@@ -764,6 +866,56 @@ export interface CheckMediaParams {
   size_bytes?: number;
   /** MIME type (pair with `size_bytes`). */
   mime?: string;
+}
+
+/**
+ * One connected channel's fit verdict for an IMAGE as a feed post, in
+ * `MediaCheckResponse.fit`. `fits: false` = the ratio is outside the window
+ * the channel shows uncropped; `default_action` is what a post create does
+ * (`crop` = Instagram crops it to `target` around the subject; `keep` =
+ * Pinterest sends it as it is and reports it) unless the post's `media_fit`
+ * says otherwise.
+ */
+export interface MediaCheckFit {
+  platform: string;
+  display_name: string;
+  fits: boolean;
+  /** The image's ratio, e.g. "9:16". */
+  ratio: string;
+  /** Whether the channel shows the whole image or cuts it. */
+  shown: "whole" | "cut";
+  /** The channel's window, e.g. "4:5"; null when the image fits. */
+  target: string | null;
+  /** What a post create does for this channel; null when the image fits. */
+  default_action: "crop" | "keep" | null;
+  /** Human-readable explanation; null when the image fits. */
+  message: string | null;
+}
+
+/** Response of `media.check`. Not the `{ data }` envelope. */
+export interface MediaCheckResponse {
+  file: {
+    size_bytes: number | null;
+    mime: string | null;
+    size_known: boolean;
+    /** Pixel width, known for library images; null otherwise. */
+    width: number | null;
+    /** Pixel height, known for library images; null otherwise. */
+    height: number | null;
+  };
+  connected_platforms: string[];
+  /** true when no connected platform would reject the file. */
+  compatible: boolean;
+  /** Connected platforms that would reject this file, with reasons. */
+  warnings: Array<{ platform: string; display_name: string; reasons: string[] }>;
+  /** One-line human summary, or null when fully compatible. */
+  summary: string | null;
+  /**
+   * How each connected channel with a fit rule shows this image as a feed
+   * post. Empty for videos and unknown sizes.
+   */
+  fit: MediaCheckFit[];
+  [key: string]: unknown;
 }
 
 export interface UpdateMediaParams {
@@ -1243,6 +1395,247 @@ export interface PinterestProductTagsResult {
   skipped: Array<{ pin_id: string; reason: string }>;
   /** Set when the tag request itself failed; `tagged` is then empty. */
   error: string | null;
+}
+
+// ─── Automations (comment-to-DM) ─────────────────────────────────────────────
+
+/** What an automation answers: a comment on the post, a DM, or a reply to a story. */
+export type AutomationTriggerKind = "comment" | "dm" | "story_reply";
+
+/**
+ * How the keywords are matched: `word` (whole word), `contains` (anywhere in
+ * the text) or `any` (every message, no keywords needed).
+ */
+export type AutomationMatch = "word" | "contains" | "any";
+
+export type AutomationStatus = "active" | "paused" | "completed";
+
+export type AutomationEventOutcome = "sent" | "skipped" | "failed" | "pending";
+
+/** The `trigger` block of an {@link Automation}. */
+export interface AutomationTrigger {
+  /** One or more of `comment`, `dm`, `story_reply`. */
+  kinds: AutomationTriggerKind[];
+  /**
+   * For the `comment` kind: `post` (one post), `next_post` (the next
+   * Instagram post the workspace publishes) or `any` (every post). `null`
+   * when `kinds` has no `comment`.
+   */
+  scope: "post" | "next_post" | "any" | null;
+  keywords: string[];
+  match: AutomationMatch;
+  [key: string]: unknown;
+}
+
+/** The `actions` block of an {@link Automation}: the DM, and the optional public reply under the comment. */
+export interface AutomationActions {
+  dm: { text: string };
+  /** Comment kind only: one of `variations` is posted under the comment. */
+  public_reply?: { enabled: boolean; variations: string[] };
+  [key: string]: unknown;
+}
+
+/** The `limits` block of an {@link Automation}; both are `null` when unset. */
+export interface AutomationLimits {
+  /** Stop after this many DMs. */
+  max_sends: number | null;
+  /** ISO 8601 datetime after which the automation stops. */
+  stop_at: string | null;
+}
+
+export interface AutomationStats {
+  matched: number;
+  sent: number;
+  skipped: number;
+  failed: number;
+  last_event_at: string | null;
+}
+
+/** The post an automation listens on, as a snapshot; `null` for scope `next_post` or `any`. */
+export interface AutomationPost {
+  /** `omnisocials` (a post made here) or `instagram` (a post published outside OmniSocials). */
+  source: "omnisocials" | "instagram";
+  id: string;
+  caption: string | null;
+  thumbnail_url: string | null;
+  permalink: string | null;
+  /** `POST`, `REEL`, `IMAGE`, `VIDEO` or `CAROUSEL_ALBUM`. */
+  media_type: string | null;
+  /** `omnisocials` source only: the post's status. */
+  status?: string;
+  /** `omnisocials` source only. */
+  post_date_time?: string | null;
+  /** `omnisocials` source only: true once the post is live on Instagram. */
+  live?: boolean;
+  [key: string]: unknown;
+}
+
+/**
+ * A comment-to-DM automation: a keyword in an Instagram comment (or a DM, or
+ * a story reply) is answered with a DM, once per person, with an optional
+ * public reply under the comment. Instagram rules: one private reply per
+ * comment, within 7 days; OmniSocials caps sends at 180 DMs an hour per
+ * account.
+ */
+export interface Automation {
+  id: string;
+  type: "comment_to_dm" | (string & {});
+  platform: "instagram" | (string & {});
+  status: AutomationStatus;
+  name: string | null;
+  /** The OmniSocials post it listens on, or `null`. */
+  post_id: string | null;
+  /** The Instagram media id it listens on; set once the post is live. */
+  instagram_media_id: string | null;
+  post: AutomationPost | null;
+  trigger: AutomationTrigger;
+  actions: AutomationActions;
+  limits: AutomationLimits;
+  stats: AutomationStats;
+  created_at: string;
+  updated_at: string;
+  [key: string]: unknown;
+}
+
+/** One entry of `automations.listEvents()`: what happened for one person. */
+export interface AutomationEvent {
+  id: string;
+  automation_id: string;
+  /** What the person did: `comment`, `dm` or `story_reply`. */
+  kind: AutomationTriggerKind;
+  outcome: AutomationEventOutcome;
+  /**
+   * `skipped`: `already_sent`, `limit_reached`, `stopped`, `window_passed`
+   * or `rate_limited`; `failed`: the platform's error text.
+   */
+  reason: string | null;
+  /** `reason` in plain words. */
+  reason_label: string | null;
+  person: { id: string; username: string | null } | null;
+  /** The comment id or message id that triggered the event. */
+  trigger_id: string | null;
+  /** The comment text; for `dm` and `story_reply` only with the `inbox:read` scope, else `null`. */
+  trigger_text: string | null;
+  /** The DM that was sent. */
+  message: string | null;
+  public_reply: string | null;
+  platform_message_id: string | null;
+  created_at: string;
+  sent_at: string | null;
+  [key: string]: unknown;
+}
+
+/**
+ * Response of `automations.listEvents()`. NOT the plain list envelope: next
+ * to `data` it carries `counts` (events per outcome, e.g. `{ sent: 12,
+ * skipped: 3 }`; an outcome with no events is left out) and `pagination`.
+ */
+export interface AutomationEventsResponse {
+  data: AutomationEvent[];
+  counts: Partial<Record<AutomationEventOutcome, number>>;
+  pagination: Pagination;
+  [key: string]: unknown;
+}
+
+/** `trigger` on `automations.create()` / `automations.update()`. */
+export interface AutomationTriggerInput {
+  /** Default `["comment"]`. */
+  kinds?: AutomationTriggerKind[];
+  /**
+   * Default `post`. `next_post` = the next Instagram post the workspace
+   * publishes, `any` = every post.
+   */
+  scope?: "post" | "next_post" | "any";
+  /** Up to 20, 60 characters each. Required unless `match` is `any`. */
+  keywords?: string[];
+  /** Default `word`. */
+  match?: AutomationMatch;
+}
+
+/** `actions` on `automations.create()` / `automations.update()` and in `comment_dm_automation`. */
+export interface AutomationActionsInput {
+  /** The DM to send (`text` max 1000 characters). */
+  dm: { text: string };
+  /** Comment kind only: up to 10 variations of 300 characters; one is posted under the comment. */
+  public_reply?: { enabled?: boolean; variations?: string[] };
+}
+
+/** `limits` on `automations.create()` / `automations.update()` and in `comment_dm_automation`. */
+export interface AutomationLimitsInput {
+  /** Stop after this many DMs. */
+  max_sends?: number | null;
+  /** ISO 8601 datetime after which the automation stops. */
+  stop_at?: string | null;
+}
+
+export interface CreateAutomationParams {
+  /** Max 120 characters. */
+  name?: string;
+  /**
+   * For scope `post`: an OmniSocials post that goes to Instagram (scheduled
+   * or live). One automation per post. Pass `post_id` OR
+   * `instagram_media_id`, not both.
+   */
+  post_id?: string;
+  /** For scope `post`: a post published outside OmniSocials (numeric Instagram media id). */
+  instagram_media_id?: string;
+  trigger?: AutomationTriggerInput;
+  actions: AutomationActionsInput;
+  limits?: AutomationLimitsInput;
+  /** `active` (default) or `paused` (create as paused). */
+  status?: "active" | "paused";
+}
+
+/** Every field is optional; a body with nothing is a `400 no_fields`. */
+export interface UpdateAutomationParams {
+  name?: string;
+  /** Moves the automation to that post. */
+  post_id?: string;
+  /** Moves the automation to that Instagram post. */
+  instagram_media_id?: string;
+  /**
+   * Merged into the stored trigger: keys you omit keep their value, so new
+   * `keywords` keep the kinds, the scope and the match.
+   */
+  trigger?: AutomationTriggerInput;
+  /**
+   * Merged into the stored actions: a new `dm.text` keeps the public reply;
+   * `public_reply: { enabled: false }` or `{ variations: [] }` turns it off.
+   */
+  actions?: AutomationActionsInput;
+  /**
+   * Merged into the stored limits: `{ stop_at }` keeps `max_sends`;
+   * `{ max_sends: null }` removes that limit.
+   */
+  limits?: AutomationLimitsInput;
+  /** `paused` pauses, `active` resumes. */
+  status?: "active" | "paused";
+}
+
+export interface ListAutomationsParams {
+  status?: AutomationStatus;
+  /** Only the automation bound to this OmniSocials post. */
+  post_id?: string;
+}
+
+export interface ListAutomationEventsParams {
+  outcome?: AutomationEventOutcome;
+  /** 1 to 100, default 25. */
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * `comment_dm_automation` on `posts.create()` / `posts.update()`: the
+ * automation bound to that post. The create body of `automations.create()`
+ * without `post_id`, `instagram_media_id`, `scope`, `kinds`, `name` and
+ * `status`; Instagram must be one of the post's channels. Needs the
+ * `automations:write` scope on the key.
+ */
+export interface CommentDmAutomationInput {
+  trigger?: { keywords?: string[]; match?: AutomationMatch };
+  actions: AutomationActionsInput;
+  limits?: AutomationLimitsInput;
 }
 
 // ─── Webhooks (management) ───────────────────────────────────────────────────

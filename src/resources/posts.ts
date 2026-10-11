@@ -12,6 +12,7 @@ import type {
   PostRetryResult,
   RecentPlatformPostsParams,
   UpdatePostParams,
+  UpdatePostResponse,
 } from "../types.js";
 
 export class PostsResource {
@@ -61,6 +62,16 @@ export class PostsResource {
    * details: { credits_required, credits_balance, credits_reserved } } }`.
    * Drafts are never gated, and posts publishing before 2026-08-14 are never
    * gated.
+   *
+   * The same `warnings` array carries one `image_fit` entry per channel
+   * decision on a feed image whose ratio is outside what the channel shows
+   * uncropped (`action` is `cropped`, `kept` or `crop_failed`); `media_fit`
+   * on the params steers it per channel.
+   *
+   * `comment_dm_automation` binds a comment-to-DM automation to the post
+   * (Instagram must be in `channels`; needs the `automations:write` scope on
+   * the key). The response then carries `data.comment_dm_automation`, and
+   * the automation starts listening once the post is live on Instagram.
    */
   create(params: CreatePostParams): Promise<CreatePostResponse> {
     return this.client.post("/posts/create", params);
@@ -77,8 +88,16 @@ export class PostsResource {
     return this.client.post("/posts/create-and-publish", params);
   }
 
-  /** `PATCH /posts/:id` - update a draft or scheduled post. */
-  update(id: string, params: UpdatePostParams): Promise<ItemResponse<Post>> {
+  /**
+   * `PATCH /posts/:id` - update a draft or scheduled post. Like {@link create},
+   * the response can carry a top-level `warnings` array: `image_fit` entries
+   * when the update changes the images or `media_fit` (`media_fit` alone
+   * re-decides the stored images; `keep` gives the original back).
+   * `comment_dm_automation` as an object replaces the post's comment-to-DM
+   * automation, `null` removes it, omitted leaves it (needs the
+   * `automations:write` scope).
+   */
+  update(id: string, params: UpdatePostParams): Promise<UpdatePostResponse> {
     return this.client.patch(`/posts/${encodeURIComponent(id)}`, params);
   }
 

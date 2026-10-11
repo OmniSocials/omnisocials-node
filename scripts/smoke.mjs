@@ -53,6 +53,7 @@ const surface = {
   analytics: ["post", "posts", "overview", "accounts", "bestTimes"],
   locations: ["search", "validate"],
   pinterest: ["listProducts", "validateProduct"],
+  automations: ["list", "get", "create", "update", "delete", "listEvents"],
   webhooks: ["list", "get", "create", "update", "delete", "rotateSecret"],
 };
 for (const [resource, methods] of Object.entries(surface)) {
@@ -194,6 +195,6 @@ const cjsVerified = cjs.verifyWebhookSignature({
 assert.equal(cjsVerified.id, eventObject.id);
 
 console.log("All smoke tests passed.");
-console.log("- ESM import OK, client + 9 resources expose all inventory methods");
+console.log("- ESM import OK, client + 10 resources expose all inventory methods");
 console.log("- Webhook signature: accepts valid, rejects tampered/stale/wrong-secret/malformed");
 console.log("- CJS require() OK (dual build works)");
