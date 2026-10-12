@@ -59,10 +59,29 @@ export interface XThreadPartInput {
   media_urls?: MediaUrlInput[];
 }
 
+/**
+ * A poll on an X, Threads or Mastodon post (the post text is the question).
+ * X: 2 to 4 options of up to 25 characters, `duration_minutes` 5 to 10080
+ * (default 1440). Threads: 2 to 4 options of 1 to 25 characters, closed by
+ * Threads after 24 hours. Mastodon: options and `expires_in` (seconds)
+ * within the instance's limits, plus `multiple` and `hide_totals`. A poll
+ * and media do not go together on these platforms; on a thread the poll
+ * goes on the first part.
+ */
+export interface ChannelPoll {
+  options: string[];
+  duration_minutes?: number;
+  expires_in?: number;
+  multiple?: boolean;
+  hide_totals?: boolean;
+}
+
 export interface XPostOptions {
   reply_settings?: "" | "following" | "mentionedUsers";
   paid_partnership?: boolean;
   made_with_ai?: boolean;
+  /** A poll on the tweet; see ChannelPoll. `null` on update removes it. */
+  poll?: ChannelPoll | null;
   /** Provide 2-25 parts to publish as a thread. Omit for a single tweet. */
   thread_parts?: XThreadPartInput[];
 }
@@ -112,6 +131,8 @@ export interface MastodonThreadPartInput {
 }
 
 export interface MastodonPostOptions {
+  /** A poll on the status; see ChannelPoll. `null` on update removes it. */
+  poll?: ChannelPoll | null;
   /** Provide 2-25 parts to publish as a thread. Omit for a single status. */
   thread_parts?: MastodonThreadPartInput[];
 }
@@ -121,6 +142,7 @@ export interface MastodonPostOptions {
  * single status); `undefined` leaves the existing thread untouched.
  */
 export interface MastodonPostOptionsUpdate {
+  poll?: ChannelPoll | null;
   thread_parts?: MastodonThreadPartInput[] | null;
 }
 
@@ -149,6 +171,8 @@ export interface ThreadsLocationInput {
 }
 
 export interface ThreadsPostOptions {
+  /** A poll on the post (text-only post); see ChannelPoll. `null` on update removes it. */
+  poll?: ChannelPoll | null;
   /**
    * Provide 2-25 parts to publish as a chained thread; parts after the first
    * publish as replies to the previous part. When set, the Threads caption is
@@ -178,6 +202,7 @@ export interface ThreadsPostOptions {
  * clears it, `undefined` leaves it untouched.
  */
 export interface ThreadsPostOptionsUpdate {
+  poll?: ChannelPoll | null;
   thread_parts?: ThreadsThreadPartInput[] | null;
   location_id?: string | null;
   location?: ThreadsLocationInput | null;
@@ -497,6 +522,7 @@ export interface Post {
     reply_settings?: string;
     paid_partnership?: boolean;
     made_with_ai?: boolean;
+    poll?: ChannelPoll | null;
     thread_parts?: Array<{ id?: string; text: string; media_urls?: MediaUrlInput[] }>;
     [key: string]: unknown;
   };
@@ -505,10 +531,12 @@ export interface Post {
     [key: string]: unknown;
   };
   mastodon?: {
+    poll?: ChannelPoll | null;
     thread_parts?: Array<{ id?: string; text: string; media_urls?: MediaUrlInput[] }>;
     [key: string]: unknown;
   };
   threads?: {
+    poll?: ChannelPoll | null;
     thread_parts?: Array<{ id?: string; text: string; media_urls?: MediaUrlInput[] }>;
     /** Threads location tag, present only when one is set. */
     location?: {
