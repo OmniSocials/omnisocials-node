@@ -209,6 +209,64 @@ export interface ThreadsPostOptionsUpdate {
 }
 
 /**
+ * Telegram options: the connected channel or group, posted by the OmniSocials
+ * bot. Text up to 4,096 characters; with media, text over 1,024 characters is
+ * sent as a reply under the media. Up to 10 photos and videos per album (a GIF
+ * goes on its own), files up to 50 MB, no Stories. On update every key merges
+ * into the stored options and `null` removes it.
+ */
+export interface TelegramButton {
+  /** Button label, 1 to 64 characters. */
+  text: string;
+  /** Link the button opens: https://, http:// or tg://. */
+  url: string;
+}
+
+/** A native Telegram poll; the post text is the question (max 300 characters). No media with a poll. */
+export interface TelegramPoll {
+  /** 2 to 12 answer options of up to 100 characters, all different. */
+  options: string[];
+  /** Seconds the poll stays open (5 to 2628000). Omit to keep it open. */
+  open_period?: number;
+  /** Allow several answers per person. */
+  multiple?: boolean;
+}
+
+export interface TelegramPostOptions {
+  /** Send without a notification sound. */
+  silent?: boolean | null;
+  /** `false` hides the link preview of a text-only post (shown by default). */
+  link_preview?: boolean | null;
+  /** Pin the post in the chat. Needs the bot's Edit messages right in a channel, Pin messages in a group. */
+  pin?: boolean | null;
+  /** Stop forwarding and saving of the post in Telegram apps. */
+  protect_content?: boolean | null;
+  /** Blur the photos and videos until someone taps them. */
+  spoiler?: boolean | null;
+  /** Show the text above the media instead of below. */
+  caption_above_media?: boolean | null;
+  /** Up to 3 link buttons, one per row. Not on an album (2+ media) or a poll. */
+  buttons?: TelegramButton[] | null;
+  poll?: TelegramPoll | null;
+  /** A reply the bot sends under the post right after it is published (max 4,096 characters). */
+  first_comment?: string;
+}
+
+/** Where a Telegram post landed, on `Post.telegram.result` once it is sent. */
+export interface TelegramPostResult {
+  chat_id: string | null;
+  message_ids: string[];
+  pinned: boolean;
+  /** `no_right` when the bot may not pin, `failed` otherwise. */
+  pin_error?: string;
+  /** The reply that holds the text when it was over 1,024 characters with media. */
+  text_message_id?: string;
+  link_public: string | null;
+  link_private: string | null;
+  sent_at: string | null;
+}
+
+/**
  * Non-sponsored LinkedIn poll (question + 2-4 options + duration). Mutually
  * exclusive with media and a link share on that channel's post — a poll
  * takes priority over both at publish time.
@@ -368,6 +426,7 @@ export interface CreatePostParams {
   mastodon?: MastodonPostOptions;
   threads?: ThreadsPostOptions;
   google_business?: Record<string, unknown>;
+  telegram?: TelegramPostOptions | null;
 }
 
 export interface UpdatePostParams {
@@ -430,6 +489,8 @@ export interface UpdatePostParams {
   /** `thread_parts: null` clears thread mode; omit to leave it untouched. */
   threads?: ThreadsPostOptionsUpdate;
   google_business?: Record<string, unknown>;
+  /** Merges into the stored Telegram options; `null` on a key removes it. */
+  telegram?: TelegramPostOptions | null;
 }
 
 export interface ListPostsParams {
@@ -546,6 +607,12 @@ export interface Post {
       city?: string | null;
       country?: string | null;
     };
+    [key: string]: unknown;
+  };
+  telegram?: TelegramPostOptions & {
+    /** Present once the post was sent. */
+    result?: TelegramPostResult;
+    first_comment_result?: Record<string, unknown> | null;
     [key: string]: unknown;
   };
   pinterest?: {
@@ -1166,6 +1233,54 @@ export interface BestTimesParams {
   platform: string;
   /** IANA timezone for the returned slots, e.g. "Europe/Amsterdam". */
   timezone?: string;
+}
+
+/** One day/hour cell in `BestTimesResponse.grid`. */
+export interface BestTimesSlot {
+  /** Lowercase weekday, e.g. "monday". */
+  day: string;
+  /** Hour of the day, 0-23, in the response timezone. */
+  hour: number;
+  /** Score relative to the best slot of the platform (100 = best). */
+  score: number;
+  /** Sample count behind the cell. Absent on defaults. */
+  n?: number;
+  /** Typical engagement for the slot. Absent on defaults. */
+  typical_engagement?: number;
+  [key: string]: unknown;
+}
+
+/** One of the top slots in `BestTimesResponse.recommendations`. */
+export interface BestTimesRecommendation extends BestTimesSlot {
+  /** The hour as "HH:00", e.g. "15:00". */
+  time: string;
+}
+
+/**
+ * Response of `analytics.bestTimes()`. The fields sit at the top level of
+ * the response. There is no `data` wrapper.
+ */
+export interface BestTimesResponse {
+  platform: string;
+  /** IANA timezone the day/hour buckets are expressed in. */
+  timezone: string;
+  /** Where the slots come from: own posts, audience activity, or industry defaults. */
+  basis: "own_data" | "own_data_and_audience" | "audience" | "defaults" | (string & {});
+  /** Number of analyzed posts. */
+  sample_size?: number;
+  /** Published posts still needed for personalized slots (0 on own data). */
+  posts_needed?: number;
+  metric?: string;
+  window_days?: number;
+  /** Hour (0-23) to the number of followers online. Instagram and TikTok Business only. */
+  audience_online?: Record<string, number>;
+  /** Snapshot date (YYYY-MM-DD) of `audience_online`. */
+  audience_online_date?: string;
+  /** Every day/hour cell that has data. */
+  grid: BestTimesSlot[];
+  /** The top 3 slots. */
+  recommendations: BestTimesRecommendation[];
+  [key: string]: unknown;
 }
 
 // ─── Locations ───────────────────────────────────────────────────────────────

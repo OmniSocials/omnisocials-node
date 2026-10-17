@@ -18,7 +18,7 @@ import { AutomationsResource } from "./resources/automations.js";
 import { WebhooksResource } from "./resources/webhooks.js";
 import { InboxResource } from "./resources/inbox.js";
 
-export const VERSION = "0.10.0";
+export const VERSION = "0.11.0";
 
 const DEFAULT_BASE_URL = "https://api.omnisocials.com/v1";
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -26,7 +26,7 @@ const DEFAULT_MAX_RETRIES = 2;
 const USER_AGENT = `omnisocials-node/${VERSION}`;
 
 export interface OmniSocialsOptions {
-  /** API key (`omsk_live_*` / `omsk_test_*`). Defaults to `process.env.OMNISOCIALS_API_KEY`. */
+  /** API key (`omsk_live_*`). Defaults to `process.env.OMNISOCIALS_API_KEY`. */
   apiKey?: string;
   /** API base URL. Defaults to `https://api.omnisocials.com/v1`. */
   baseUrl?: string;

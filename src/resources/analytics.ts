@@ -4,6 +4,7 @@ import type {
   AnalyticsOverviewParams,
   AnalyticsOverviewResponse,
   BestTimesParams,
+  BestTimesResponse,
   ItemResponse,
   PostAnalytics,
   PostsAnalyticsResponse,
@@ -53,9 +54,11 @@ export class AnalyticsResource {
 
   /**
    * `GET /analytics/best-times` - recommended posting time slots for a
-   * platform, based on when the account's audience engages.
+   * platform, based on when the account's audience engages. The response
+   * fields (`platform`, `timezone`, `basis`, `grid`, `recommendations`) sit
+   * at the top level, with no `data` wrapper.
    */
-  bestTimes(params: BestTimesParams): Promise<ItemResponse<Record<string, unknown>>> {
+  bestTimes(params: BestTimesParams): Promise<BestTimesResponse> {
     return this.client.get("/analytics/best-times", {
       platform: params.platform,
       timezone: params.timezone,
