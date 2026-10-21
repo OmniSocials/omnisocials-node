@@ -87,7 +87,7 @@ export class MediaResource {
 
   /**
    * `POST /media/create-upload-url` - mint a one-time presigned upload URL
-   * for large files (up to 1GB). POST the file as multipart form data
+   * for a file up to 100 MB. POST the file as multipart form data
    * (field name "file") to the returned `upload_url` within
    * `expires_in_seconds`; no auth headers are needed on that second request.
    */

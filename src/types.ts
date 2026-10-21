@@ -528,8 +528,12 @@ export interface Post {
   content: string | Record<string, string>;
   status: string;
   type?: string;
-  /** Platform identifiers this post targets (e.g. ["instagram", "x"]). */
-  accounts: string[];
+  /**
+   * The channels this post targets, as a map of every platform key to
+   * `true` or `false` (e.g. `{ instagram: true, x: false }`). Requests take
+   * an array of account IDs instead.
+   */
+  accounts: Record<string, boolean>;
   /**
    * Attached media: a flat array shared across platforms, or a per-platform
    * map (`default` key + platform overrides). Items include an optional `alt`
