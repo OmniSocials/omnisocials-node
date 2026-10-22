@@ -69,9 +69,11 @@ export class PostsResource {
    * on the params steers it per channel.
    *
    * `comment_dm_automation` binds a comment-to-DM automation to the post
-   * (Instagram must be in `channels`; needs the `automations:write` scope on
-   * the key). The response then carries `data.comment_dm_automation`, and
-   * the automation starts listening once the post is live on Instagram.
+   * (Instagram or Facebook must be in `channels`; `platforms` picks the
+   * channels; needs the `automations:write` scope on the key). The response
+   * then carries `data.comment_dm_automation` with `platforms` and
+   * `automations`, and each automation starts listening once the post is
+   * live on its channel.
    */
   create(params: CreatePostParams): Promise<CreatePostResponse> {
     return this.client.post("/posts/create", params);
@@ -94,7 +96,8 @@ export class PostsResource {
    * when the update changes the images or `media_fit` (`media_fit` alone
    * re-decides the stored images; `keep` gives the original back).
    * `comment_dm_automation` as an object replaces the post's comment-to-DM
-   * automation, `null` removes it, omitted leaves it (needs the
+   * automations (a channel no longer in `platforms` loses its automation),
+   * `null` removes them all, omitted leaves them (needs the
    * `automations:write` scope).
    */
   update(id: string, params: UpdatePostParams): Promise<UpdatePostResponse> {

@@ -267,6 +267,67 @@ export interface TelegramPostResult {
 }
 
 /**
+ * Discord options: one Discord channel, posted through its incoming webhook
+ * (the message shows the webhook's name and picture). Text up to 2,000
+ * characters. Up to 10 images, GIFs and videos per message, mixed; a video or
+ * GIF over Discord's 20 MB attachment limit is sent as a link in the text (an
+ * image over it is re-encoded). No Stories; a Reel is one video message. On
+ * update every key merges into the stored options and `null` removes it;
+ * `discord: null` removes every option.
+ */
+export interface DiscordButton {
+  /** Button label, 1 to 80 characters. */
+  text: string;
+  /** Link the button opens: https:// or http://. */
+  url: string;
+}
+
+/** A native Discord poll; the post text is the question (max 300 characters). No media and no buttons with a poll. */
+export interface DiscordPoll {
+  /** 2 to 10 answer options of up to 55 characters, all different. */
+  options: string[];
+  /** Hours the poll stays open (1 to 768, default 24). */
+  duration_hours?: number;
+  /** Allow several answers per person. */
+  multiple?: boolean;
+}
+
+export interface DiscordPostOptions {
+  /** Send without a push or desktop notification (Discord's @silent). */
+  silent?: boolean | null;
+  /** `false` hides the previews (embeds) of links in the text (shown by default). */
+  link_preview?: boolean | null;
+  /** `true` lets @everyone, @here, role and user mentions in the text ping (default off: they show as text). */
+  allow_mentions?: boolean | null;
+  /** Blur every image and video until someone clicks it. */
+  spoiler?: boolean | null;
+  /** Post title in a forum or media channel, where Discord requires one (1 to 100 characters). On a text channel the post goes out without it. */
+  thread_name?: string | null;
+  /** Up to 5 link buttons in one row. Not with a poll. */
+  buttons?: DiscordButton[] | null;
+  poll?: DiscordPoll | null;
+}
+
+/** Where a Discord post landed, on `Post.discord.result` once it is sent. */
+export interface DiscordPostResult {
+  webhook_id: string | null;
+  guild_id: string | null;
+  channel_id: string | null;
+  /** The forum post the message opened, or null in a text channel. */
+  thread_id: string | null;
+  message_id: string | null;
+  /** `https://discord.com/channels/<guild>/<thread or channel>/<message>`. */
+  url: string | null;
+  sent_at: string | null;
+  /** A second message that holds the media links when they did not fit in the 2,000-character text, or null. */
+  link_message_id: string | null;
+  /** Every media item sent as a link instead of a file (over the 20 MB attachment limit). */
+  video_links: string[];
+  /** Codes such as `media_sent_as_links`, `links_sent_as_follow_up`, `poll_media_dropped`, `poll_buttons_dropped`, `follow_up_failed`, `thread_name_ignored`. */
+  warnings: string[];
+}
+
+/**
  * Non-sponsored LinkedIn poll (question + 2-4 options + duration). Mutually
  * exclusive with media and a link share on that channel's post — a poll
  * takes priority over both at publish time.
@@ -392,15 +453,17 @@ export interface CreatePostParams {
    */
   media_fit?: Record<string, MediaFitMode>;
   /**
-   * Comment-to-DM automation bound to this post (Instagram must be in
-   * `channels`): a keyword in a comment is answered with a DM, once per
-   * person, with an optional public reply under the comment. See
-   * {@link CommentDmAutomationInput} for the shape. Needs the
-   * `automations:write` scope on the key (`403 insufficient_scope`, checked
-   * before anything else); a bad object is a `400 validation_error` whose
-   * message starts with `comment_dm_automation: `. The response carries
-   * `data.comment_dm_automation` (the {@link Automation}, with `post: null`);
-   * it starts listening once the post is live on Instagram.
+   * Comment-to-DM automation bound to this post (Instagram or Facebook must
+   * be in `channels`): a keyword in a comment is answered with a DM, once
+   * per person, with an optional public reply under the comment.
+   * `platforms` picks the channels (default: Instagram when the post goes
+   * there, else Facebook). See {@link CommentDmAutomationInput} for the
+   * shape. Needs the `automations:write` scope on the key
+   * (`403 insufficient_scope`, checked before anything else); a bad object
+   * is a `400 validation_error` whose message starts with
+   * `comment_dm_automation: `. The response carries
+   * `data.comment_dm_automation` (see {@link PostCommentDmAutomation});
+   * each automation starts listening once the post is live on its channel.
    */
   comment_dm_automation?: CommentDmAutomationInput | null;
   /**
@@ -427,6 +490,7 @@ export interface CreatePostParams {
   threads?: ThreadsPostOptions;
   google_business?: Record<string, unknown>;
   telegram?: TelegramPostOptions | null;
+  discord?: DiscordPostOptions | null;
 }
 
 export interface UpdatePostParams {
@@ -452,8 +516,9 @@ export interface UpdatePostParams {
   /**
    * Comment-to-DM automation on this post (same shape as on
    * {@link CreatePostParams.comment_dm_automation}): an object replaces the
-   * post's automation, `null` removes it, omit to leave it untouched. Needs
-   * the `automations:write` scope.
+   * post's automations (a channel no longer in `platforms` loses its
+   * automation), `null` removes them all, omit to leave them untouched.
+   * Needs the `automations:write` scope.
    */
   comment_dm_automation?: CommentDmAutomationInput | null;
   channels?: string[];
@@ -491,6 +556,8 @@ export interface UpdatePostParams {
   google_business?: Record<string, unknown>;
   /** Merges into the stored Telegram options; `null` on a key removes it. */
   telegram?: TelegramPostOptions | null;
+  /** Merges into the stored Discord options; `null` on a key removes it, `null` for the whole field removes every option. */
+  discord?: DiscordPostOptions | null;
 }
 
 export interface ListPostsParams {
@@ -619,6 +686,11 @@ export interface Post {
     first_comment_result?: Record<string, unknown> | null;
     [key: string]: unknown;
   };
+  discord?: DiscordPostOptions & {
+    /** Present once the post was sent. */
+    result?: DiscordPostResult;
+    [key: string]: unknown;
+  };
   pinterest?: {
     /** Product Pin ids tagged on the Pin, echoed when set. */
     product_tags?: string[];
@@ -629,12 +701,13 @@ export interface Post {
   /** Non-sponsored LinkedIn poll, echoed back when this post is one. */
   linkedin_poll?: LinkedInPollInput | null;
   /**
-   * On a post that goes to Instagram (`posts.get()`, and the create / update
-   * response when the request carried the field): the comment-to-DM
-   * automation bound to this post, with `post: null`, or `null` when it has
+   * On a post that goes to Instagram or Facebook (`posts.get()`, and the
+   * create / update response when the request carried the field): the
+   * comment-to-DM automation bound to this post, with `post: null`, plus
+   * `platforms` and `automations` (one per channel), or `null` when it has
    * none.
    */
-  comment_dm_automation?: Automation | null;
+  comment_dm_automation?: PostCommentDmAutomation | null;
   [key: string]: unknown;
 }
 
@@ -1112,7 +1185,8 @@ export interface UpdateHashtagSetParams {
 export interface Account {
   id: string;
   platform: string;
-  username: string;
+  /** The @handle; null for channels without one, such as Discord (see display_name). */
+  username: string | null;
   display_name: string;
   profile_picture: string | null;
   content_types: string[];
@@ -1129,6 +1203,22 @@ export interface Account {
   boards?: { id: string; name: string }[];
   platform_details?: {
     subscription_type?: string;
+    /** Discord: the server (guild) the channel is in. */
+    guild_id?: string;
+    /** Discord: the server name; null for a pasted webhook URL in a server without the OmniSocials bot. */
+    guild_name?: string | null;
+    /** Discord: the channel the webhook posts to. */
+    channel_id?: string;
+    /** Discord: the channel name without the # (read by the OmniSocials bot, or given by the person); null when unknown. */
+    channel_name?: string | null;
+    /** Discord: the kind of channel, as the bot read it; null when it cannot see the channel. */
+    channel_type?: "text" | "voice" | "announcement" | "stage" | "forum" | "media" | null;
+    /** Discord: the webhook's name, shown on every message. */
+    webhook_name?: string;
+    /** Discord: `oauth` (connected through Discord) or `url` (a pasted webhook URL). */
+    connect_method?: "oauth" | "url" | string;
+    /** Telegram: the chat link; Discord: `discord.com/channels/<guild>/<channel>`. */
+    url?: string | null;
     [key: string]: unknown;
   };
   [key: string]: unknown;
@@ -1561,12 +1651,16 @@ export type AutomationEventOutcome = "sent" | "skipped" | "failed" | "pending";
 
 /** The `trigger` block of an {@link Automation}. */
 export interface AutomationTrigger {
-  /** One or more of `comment`, `dm`, `story_reply`. */
+  /**
+   * One or more of `comment`, `dm`, `story_reply`. A Facebook Page has
+   * `comment` and `dm` only (`dm` = a keyword in a Messenger message to the
+   * Page); it has no story replies.
+   */
   kinds: AutomationTriggerKind[];
   /**
-   * For the `comment` kind: `post` (one post), `next_post` (the next
-   * Instagram post the workspace publishes) or `any` (every post). `null`
-   * when `kinds` has no `comment`.
+   * For the `comment` kind: `post` (one post), `next_post` (the next post
+   * the workspace publishes on the automation's channel) or `any` (every
+   * post). `null` when `kinds` has no `comment`.
    */
   scope: "post" | "next_post" | "any" | null;
   keywords: string[];
@@ -1600,8 +1694,11 @@ export interface AutomationStats {
 
 /** The post an automation listens on, as a snapshot; `null` for scope `next_post` or `any`. */
 export interface AutomationPost {
-  /** `omnisocials` (a post made here) or `instagram` (a post published outside OmniSocials). */
-  source: "omnisocials" | "instagram";
+  /**
+   * `omnisocials` (a post made here), `instagram` or `facebook` (a post
+   * published outside OmniSocials, read from that platform).
+   */
+  source: "omnisocials" | "instagram" | "facebook";
   id: string;
   caption: string | null;
   thumbnail_url: string | null;
@@ -1612,28 +1709,42 @@ export interface AutomationPost {
   status?: string;
   /** `omnisocials` source only. */
   post_date_time?: string | null;
-  /** `omnisocials` source only: true once the post is live on Instagram. */
+  /** `omnisocials` source only: true once the post is live on the automation's channel. */
   live?: boolean;
   [key: string]: unknown;
 }
 
+/** The channel a comment-to-DM automation runs on. */
+export type AutomationPlatform = "instagram" | "facebook";
+
 /**
  * A comment-to-DM automation: a keyword in an Instagram comment (or a DM, or
  * a story reply) is answered with a DM, once per person, with an optional
- * public reply under the comment. Instagram rules: one private reply per
- * comment, within 7 days; OmniSocials caps sends at 180 DMs an hour per
- * account.
+ * public reply under the comment. On a Facebook Page a keyword in a comment
+ * (or a Messenger message to the Page) is answered with a DM in Messenger;
+ * a Page has no story replies. Meta rules, the same on both: one private
+ * reply per comment, within 7 days; OmniSocials caps sends at 180 DMs an
+ * hour per account and platform.
  */
 export interface Automation {
   id: string;
   type: "comment_to_dm" | (string & {});
-  platform: "instagram" | (string & {});
+  /** `instagram` or `facebook` (a Facebook Page). Set at create; it never changes. */
+  platform: AutomationPlatform | (string & {});
   status: AutomationStatus;
   name: string | null;
   /** The OmniSocials post it listens on, or `null`. */
   post_id: string | null;
-  /** The Instagram media id it listens on; set once the post is live. */
+  /**
+   * The Instagram media id it listens on; set once the post is live. `null`
+   * for a Facebook automation.
+   */
   instagram_media_id: string | null;
+  /**
+   * The Facebook Page post id it listens on (`{page-id}_{post-id}`); set
+   * once the post is live. `null` for an Instagram automation.
+   */
+  facebook_post_id: string | null;
   post: AutomationPost | null;
   trigger: AutomationTrigger;
   actions: AutomationActions;
@@ -1644,7 +1755,11 @@ export interface Automation {
   [key: string]: unknown;
 }
 
-/** One entry of `automations.listEvents()`: what happened for one person. */
+/**
+ * One entry of `automations.listEvents()`: what happened for one person. On
+ * Facebook `person.id` is the person's id as the Page sees it and
+ * `person.username` is their name (Facebook has no @handle).
+ */
 export interface AutomationEvent {
   id: string;
   automation_id: string;
@@ -1689,8 +1804,8 @@ export interface AutomationTriggerInput {
   /** Default `["comment"]`. */
   kinds?: AutomationTriggerKind[];
   /**
-   * Default `post`. `next_post` = the next Instagram post the workspace
-   * publishes, `any` = every post.
+   * Default `post`. `next_post` = the next post the workspace publishes on
+   * the automation's channel, `any` = every post.
    */
   scope?: "post" | "next_post" | "any";
   /** Up to 20, 60 characters each. Required unless `match` is `any`. */
@@ -1716,16 +1831,31 @@ export interface AutomationLimitsInput {
 }
 
 export interface CreateAutomationParams {
+  /**
+   * `instagram` (default) or `facebook` (a Facebook Page; the DM lands in
+   * Messenger). `facebook_post_id` implies `facebook`. Facebook has no
+   * story replies: `story_reply` in `trigger.kinds` is a
+   * `400 validation_error`.
+   */
+  platform?: AutomationPlatform;
   /** Max 120 characters. */
   name?: string;
   /**
-   * For scope `post`: an OmniSocials post that goes to Instagram (scheduled
-   * or live). One automation per post. Pass `post_id` OR
-   * `instagram_media_id`, not both.
+   * For scope `post`: an OmniSocials post that goes to the automation's
+   * channel (scheduled or live). One automation per post and platform: a
+   * post that goes to Instagram and Facebook can have one of each. Pass at
+   * most one of `post_id`, `instagram_media_id` and `facebook_post_id`.
    */
   post_id?: string;
-  /** For scope `post`: a post published outside OmniSocials (numeric Instagram media id). */
+  /** For scope `post`: an Instagram post published outside OmniSocials (numeric Instagram media id). */
   instagram_media_id?: string;
+  /**
+   * For scope `post`: a post published on the Facebook Page outside
+   * OmniSocials, as `{page-id}_{post-id}` or the post id alone (the Page id
+   * is put in front). Implies `platform: "facebook"`. A post of another
+   * Page is a `404 facebook_post_not_found`.
+   */
+  facebook_post_id?: string;
   trigger?: AutomationTriggerInput;
   actions: AutomationActionsInput;
   limits?: AutomationLimitsInput;
@@ -1735,11 +1865,19 @@ export interface CreateAutomationParams {
 
 /** Every field is optional; a body with nothing is a `400 no_fields`. */
 export interface UpdateAutomationParams {
+  /**
+   * The platform cannot change: another platform (or `instagram_media_id`
+   * on a Facebook automation, `facebook_post_id` on an Instagram one) is a
+   * `400 platform_immutable`.
+   */
+  platform?: AutomationPlatform;
   name?: string;
   /** Moves the automation to that post. */
   post_id?: string;
-  /** Moves the automation to that Instagram post. */
+  /** Moves an Instagram automation to that Instagram post. */
   instagram_media_id?: string;
+  /** Moves a Facebook automation to that Facebook Page post. */
+  facebook_post_id?: string;
   /**
    * Merged into the stored trigger: keys you omit keep their value, so new
    * `keywords` keep the kinds, the scope and the match.
@@ -1761,6 +1899,8 @@ export interface UpdateAutomationParams {
 
 export interface ListAutomationsParams {
   status?: AutomationStatus;
+  /** Only the automations of this channel. */
+  platform?: AutomationPlatform;
   /** Only the automation bound to this OmniSocials post. */
   post_id?: string;
 }
@@ -1775,14 +1915,34 @@ export interface ListAutomationEventsParams {
 /**
  * `comment_dm_automation` on `posts.create()` / `posts.update()`: the
  * automation bound to that post. The create body of `automations.create()`
- * without `post_id`, `instagram_media_id`, `scope`, `kinds`, `name` and
- * `status`; Instagram must be one of the post's channels. Needs the
+ * without `post_id`, `instagram_media_id`, `facebook_post_id`, `platform`,
+ * `scope`, `kinds`, `name` and `status`, plus `platforms`; Instagram or
+ * Facebook must be one of the post's channels. Needs the
  * `automations:write` scope on the key.
  */
 export interface CommentDmAutomationInput {
   trigger?: { keywords?: string[]; match?: AutomationMatch };
   actions: AutomationActionsInput;
   limits?: AutomationLimitsInput;
+  /**
+   * The channels that get the automation: one automation per listed
+   * channel, each with the same keywords, DM, public reply and limits. Each
+   * one must be a channel of the post (else `400 validation_error`); an
+   * empty list is a `400`. Omit it for Instagram when the post goes there,
+   * else Facebook. On update a channel left out loses its automation.
+   */
+  platforms?: AutomationPlatform[];
+}
+
+/**
+ * `comment_dm_automation` in a post response: the first automation of the
+ * post (Instagram first) with `post: null`, plus every channel's.
+ */
+export interface PostCommentDmAutomation extends Automation {
+  /** The channels with an automation on this post, e.g. `["instagram", "facebook"]`. */
+  platforms: AutomationPlatform[];
+  /** One entry per channel. */
+  automations: { id: string; platform: AutomationPlatform; status: AutomationStatus }[];
 }
 
 // ─── Webhooks (management) ───────────────────────────────────────────────────
