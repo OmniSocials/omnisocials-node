@@ -91,8 +91,8 @@ export class InboxResource {
    * send and auto-refunded if the send fails. Two new 402 codes can be
    * thrown: `insufficient_credits` (the balance can't cover the 2 credits)
    * and `x_inbox_suspended` (the workspace's X inbox auto-suspended at zero
-   * balance; top up and re-enable it in the dashboard to resume - DMs that
-   * arrive while suspended are not recovered).
+   * balance; a top-up turns it back on by itself, but DMs that arrive while
+   * suspended are not recovered).
    *
    * Threads replies publish as native Threads replies. The Threads inbox
    * needs a Threads connection with the reply permission: a 401

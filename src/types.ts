@@ -1647,14 +1647,21 @@ export type AutomationMatch = "word" | "contains" | "any";
 
 export type AutomationStatus = "active" | "paused" | "completed";
 
-export type AutomationEventOutcome = "sent" | "skipped" | "failed" | "pending";
+/**
+ * `queued` = the answer waits for a free slot under the send cap (X 15 per 15
+ * minutes and 450 a day, Instagram and Facebook 180 an hour) and goes out
+ * within the hour, else it becomes `skipped` with `rate_limited`.
+ * `opted_out` = the person replied STOP on X.
+ */
+export type AutomationEventOutcome = "sent" | "skipped" | "failed" | "pending" | "queued" | "opted_out";
 
 /** The `trigger` block of an {@link Automation}. */
 export interface AutomationTrigger {
   /**
    * One or more of `comment`, `dm`, `story_reply`. A Facebook Page has
    * `comment` and `dm` only (`dm` = a keyword in a Messenger message to the
-   * Page); it has no story replies.
+   * Page); it has no story replies. An X automation has `dm` only (a
+   * keyword in a DM to the X account).
    */
   kinds: AutomationTriggerKind[];
   /**
@@ -1715,7 +1722,10 @@ export interface AutomationPost {
 }
 
 /** The channel a comment-to-DM automation runs on. */
-export type AutomationPlatform = "instagram" | "facebook";
+export type AutomationPlatform = "instagram" | "facebook" | "x";
+
+/** The channels of `comment_dm_automation` on a post: X has no comment trigger. */
+export type CommentDmPlatform = "instagram" | "facebook";
 
 /**
  * A comment-to-DM automation: a keyword in an Instagram comment (or a DM, or
@@ -1724,12 +1734,17 @@ export type AutomationPlatform = "instagram" | "facebook";
  * (or a Messenger message to the Page) is answered with a DM in Messenger;
  * a Page has no story replies. Meta rules, the same on both: one private
  * reply per comment, within 7 days; OmniSocials caps sends at 180 DMs an
- * hour per account and platform.
+ * hour per account and platform. On X a keyword in a DM to the X account is
+ * answered with a DM (no post, no public reply), every answer ends with
+ * "Reply STOP to stop automatic messages." and a person who replies STOP
+ * gets no automatic DM from the account again; X caps sends at 15 per 15
+ * minutes and 450 a day. An answer over a cap waits in a queue (`queued`)
+ * for up to an hour.
  */
 export interface Automation {
   id: string;
   type: "comment_to_dm" | (string & {});
-  /** `instagram` or `facebook` (a Facebook Page). Set at create; it never changes. */
+  /** `instagram`, `facebook` (a Facebook Page) or `x` (the X account). Set at create; it never changes. */
   platform: AutomationPlatform | (string & {});
   status: AutomationStatus;
   name: string | null;
@@ -1758,7 +1773,8 @@ export interface Automation {
 /**
  * One entry of `automations.listEvents()`: what happened for one person. On
  * Facebook `person.id` is the person's id as the Page sees it and
- * `person.username` is their name (Facebook has no @handle).
+ * `person.username` is their name (Facebook has no @handle); on Instagram
+ * and X `person.username` is the handle.
  */
 export interface AutomationEvent {
   id: string;
@@ -1767,8 +1783,14 @@ export interface AutomationEvent {
   kind: AutomationTriggerKind;
   outcome: AutomationEventOutcome;
   /**
-   * `skipped`: `already_sent`, `limit_reached`, `stopped`, `window_passed`
-   * or `rate_limited`; `failed`: the platform's error text.
+   * `skipped`: `already_sent`, `limit_reached`, `stopped`, `window_passed`,
+   * `rate_limited` (the send cap stayed full for an hour), `cannot_message`
+   * (a Page made the comment, or the person's settings block messages),
+   * `already_replied`, `dm_window_passed`, `dms_closed` (X: the person does
+   * not accept DMs from the account), `no_credits` (X DMs had no credits for
+   * the answer), `opted_out` (the person replied STOP before) or
+   * `automation_off` (paused or finished while the answer waited); `failed`:
+   * the platform's error text.
    */
   reason: string | null;
   /** `reason` in plain words. */
@@ -1801,7 +1823,7 @@ export interface AutomationEventsResponse {
 
 /** `trigger` on `automations.create()` / `automations.update()`. */
 export interface AutomationTriggerInput {
-  /** Default `["comment"]`. */
+  /** Default `["comment"]`. On X pass `["dm"]`, the only kind there. */
   kinds?: AutomationTriggerKind[];
   /**
    * Default `post`. `next_post` = the next post the workspace publishes on
@@ -1832,10 +1854,12 @@ export interface AutomationLimitsInput {
 
 export interface CreateAutomationParams {
   /**
-   * `instagram` (default) or `facebook` (a Facebook Page; the DM lands in
-   * Messenger). `facebook_post_id` implies `facebook`. Facebook has no
+   * `instagram` (default), `facebook` (a Facebook Page; the DM lands in
+   * Messenger) or `x` (the X account: `trigger.kinds` `["dm"]` only, no
+   * post fields). `facebook_post_id` implies `facebook`. Facebook has no
    * story replies: `story_reply` in `trigger.kinds` is a
-   * `400 validation_error`.
+   * `400 validation_error`. An active X automation needs X DMs on for the
+   * workspace (`409 x_dms_off`; `status: "paused"` always saves).
    */
   platform?: AutomationPlatform;
   /** Max 120 characters. */
@@ -1893,7 +1917,7 @@ export interface UpdateAutomationParams {
    * `{ max_sends: null }` removes that limit.
    */
   limits?: AutomationLimitsInput;
-  /** `paused` pauses, `active` resumes. */
+  /** `paused` pauses, `active` resumes (an X automation only while X DMs are on, else `409 x_dms_off`). */
   status?: "active" | "paused";
 }
 
@@ -1931,7 +1955,7 @@ export interface CommentDmAutomationInput {
    * empty list is a `400`. Omit it for Instagram when the post goes there,
    * else Facebook. On update a channel left out loses its automation.
    */
-  platforms?: AutomationPlatform[];
+  platforms?: CommentDmPlatform[];
 }
 
 /**
@@ -1940,9 +1964,9 @@ export interface CommentDmAutomationInput {
  */
 export interface PostCommentDmAutomation extends Automation {
   /** The channels with an automation on this post, e.g. `["instagram", "facebook"]`. */
-  platforms: AutomationPlatform[];
+  platforms: CommentDmPlatform[];
   /** One entry per channel. */
-  automations: { id: string; platform: AutomationPlatform; status: AutomationStatus }[];
+  automations: { id: string; platform: CommentDmPlatform; status: AutomationStatus }[];
 }
 
 // ─── Webhooks (management) ───────────────────────────────────────────────────

@@ -16,7 +16,7 @@ export class AutomationsResource {
   /**
    * `GET /automations` - list the workspace's comment-to-DM automations,
    * optionally filtered by `status` (`active`, `paused`, `completed`), by
-   * `platform` (`instagram`, `facebook`) or by the OmniSocials `post_id`
+   * `platform` (`instagram`, `facebook`, `x`) or by the OmniSocials `post_id`
    * they are bound to. Requires the `automations:read` scope (opt-in on the
    * API key).
    */
@@ -42,21 +42,28 @@ export class AutomationsResource {
    * per person, with an optional public reply under the comment. With
    * `platform: "facebook"` it runs on a Facebook Page: a keyword in a comment
    * or a Messenger message to the Page is answered in Messenger (no story
-   * replies). Bind it to one post with `post_id` (an OmniSocials post that
+   * replies). With `platform: "x"` it answers a keyword in a DM to the X
+   * account: `trigger.kinds` must be `["dm"]` (X allows an automated DM
+   * only after the person wrote first), with no post and no public reply;
+   * an active X automation needs X DMs on for the workspace
+   * (`409 x_dms_off`; `status: "paused"` always saves), and every X answer
+   * ends with "Reply STOP to stop automatic messages.". Bind it to one post with `post_id` (an OmniSocials post that
    * goes to the channel, scheduled or live; one automation per post and
    * platform), `instagram_media_id` (an Instagram post published outside
    * OmniSocials) or `facebook_post_id` (a Page post published outside
    * OmniSocials; implies `facebook`), at most one; `trigger.scope`
    * `next_post` or `any` needs none. `actions.dm.text` is required. Meta
    * rules: one private reply per comment, within 7 days; OmniSocials caps
-   * sends at 180 DMs an hour per account and platform. Requires the
+   * sends at 180 DMs an hour per account and platform, and on X at 15 per
+   * 15 minutes and 450 a day; an answer over a cap waits in a queue
+   * (`queued`) for up to an hour. Requires the
    * `automations:write` scope (opt-in on the API key). Errors:
    * `400 validation_error`, `400 post_not_instagram`, `400 post_not_facebook`,
    * `400 post_required`, `404 post_not_found`, `404 instagram_media_not_found`,
    * `404 facebook_post_not_found`, `409 instagram_not_connected`,
    * `409 instagram_needs_reauth`, `409 facebook_not_connected`,
-   * `409 facebook_needs_reauth`, `409 automation_exists` (the error body
-   * also carries `automation_id`).
+   * `409 facebook_needs_reauth`, `409 x_not_connected`, `409 x_dms_off`,
+   * `409 automation_exists` (the error body also carries `automation_id`).
    */
   create(params: CreateAutomationParams): Promise<ItemResponse<Automation>> {
     return this.client.post("/automations", params);
@@ -72,8 +79,9 @@ export class AutomationsResource {
    * limit. `status: "paused"` pauses and `"active"` resumes; another
    * `post_id` / `instagram_media_id` / `facebook_post_id` moves the
    * automation to that post. The platform cannot change
-   * (`400 platform_immutable`). A `completed` automation starts again when
-   * its limits or trigger change. Requires the `automations:write` scope.
+   * (`400 platform_immutable`). `status: "active"` on an X automation needs
+   * X DMs on for the workspace (`409 x_dms_off`). A `completed` automation
+   * starts again when its limits or trigger change. Requires the `automations:write` scope.
    * `400 no_fields` when the body is empty.
    */
   update(id: string, params: UpdateAutomationParams): Promise<ItemResponse<Automation>> {
@@ -91,7 +99,7 @@ export class AutomationsResource {
   /**
    * `GET /automations/:id/events` - the automation's activity: one event per
    * person it answered, skipped or failed on. Filter by `outcome` (`sent`,
-   * `skipped`, `failed`, `pending`); `limit` is 1 to 100 (default 25),
+   * `skipped`, `failed`, `pending`, `queued`, `opted_out`); `limit` is 1 to 100 (default 25),
    * `offset` skips. Requires the `automations:read` scope.
    *
    * Note the response shape (see {@link AutomationEventsResponse}): not the

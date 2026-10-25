@@ -155,6 +155,7 @@ export type {
   ListAutomationEventsParams,
   CommentDmAutomationInput,
   AutomationPlatform,
+  CommentDmPlatform,
   PostCommentDmAutomation,
   // Webhooks
   Webhook,
