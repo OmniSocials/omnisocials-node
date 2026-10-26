@@ -271,6 +271,8 @@ On update, pass `thread_parts: null` to clear thread mode (revert to a single po
 
 Threads posts can also carry a location tag: pass `threads.location_id`, a Threads location id from `client.locations.search({ platform: "threads", q: "..." })` (Instagram Place ids are not interchangeable). On a multi-part thread the tag lands on part 1; on update, `location_id: null` clears it. Threads location tagging is currently rolling out; until Meta approves the permissions it is disabled on production and calls return a clear error.
 
+Threads posts can carry a topic too: pass `threads.topic_tag`, for example `"Build in public"`. Unlike a #tag in the text, a topic can hold spaces. 1 to 50 characters, no period and no ampersand; a leading `#` is dropped. On a multi-part thread the topic lands on part 1; on update, `topic_tag: null` removes it.
+
 ### X link posts use credits
 
 X bills API posts whose text contains a URL at a premium, and OmniSocials passes that fee through as prepaid credits (20 credits per URL-containing tweet; threads billed per part with a link). When a create targets X and the text contains a URL, the response carries an optional top-level `warnings` array (a sibling of `data`, typed as `PostWarning[]`):

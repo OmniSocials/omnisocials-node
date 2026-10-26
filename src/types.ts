@@ -193,19 +193,28 @@ export interface ThreadsPostOptions {
    * `location_id` wins when both are given.
    */
   location?: ThreadsLocationInput;
+  /**
+   * The topic of the post on Threads (one per post), e.g. `"Build in public"`.
+   * Unlike a #tag in the text it can hold spaces. 1 to 50 characters, no
+   * period and no ampersand; a leading `#` is dropped. On a multi-post
+   * thread the topic goes on part 1.
+   */
+  topic_tag?: string;
 }
 
 /**
  * Update-side variant: `thread_parts: null` clears the thread (revert to a
  * single post); `undefined` leaves the existing thread untouched. The
  * location tag works the same way: `location_id: null` (or `location: null`)
- * clears it, `undefined` leaves it untouched.
+ * clears it, `undefined` leaves it untouched. So does the topic:
+ * `topic_tag: null` removes it.
  */
 export interface ThreadsPostOptionsUpdate {
   poll?: ChannelPoll | null;
   thread_parts?: ThreadsThreadPartInput[] | null;
   location_id?: string | null;
   location?: ThreadsLocationInput | null;
+  topic_tag?: string | null;
 }
 
 /**
@@ -678,6 +687,8 @@ export interface Post {
       city?: string | null;
       country?: string | null;
     };
+    /** The Threads topic, present only when one is set. */
+    topic_tag?: string;
     [key: string]: unknown;
   };
   telegram?: TelegramPostOptions & {
