@@ -651,6 +651,11 @@ await client.inbox.reply(conversations[0].conversation_id, {
 // TikTok, YouTube, Threads). Pass { hide: false } to unhide.
 await client.inbox.hide(messages[0].id);
 
+// Like a comment as the Page or account (Facebook, LinkedIn Page, TikTok).
+// Pass { like: false } to unlike. The returned message carries liked.
+const { data: liked } = await client.inbox.like(messages[0].id);
+console.log(liked.liked); // true
+
 // Delete a comment outright (Facebook, Instagram, TikTok; YouTube: hide instead).
 // Replies under it go with it; their ids come back as removed_reply_ids.
 await client.inbox.deleteMessage(messages[0].id);

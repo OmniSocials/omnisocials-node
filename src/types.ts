@@ -2176,6 +2176,15 @@ export interface InboxMessage {
    * which have no notion of hidden.
    */
   hidden: boolean | null;
+  /**
+   * Facebook, LinkedIn Page and TikTok comments: `true` when the connected
+   * account liked the comment (see `inbox.like`), `false` when it did not.
+   * On Facebook and LinkedIn it reflects likes made through OmniSocials;
+   * TikTok also syncs likes made in the TikTok app. `null` where the
+   * platform has no like through OmniSocials (DMs, Instagram, YouTube, X,
+   * Threads).
+   */
+  liked: boolean | null;
   /** Link to the reply or mentioning post on the platform, when known. */
   permalink: string | null;
   /**
@@ -2300,6 +2309,17 @@ export interface InboxHideResponse {
   [key: string]: unknown;
 }
 
+export interface LikeInboxParams {
+  /** `true` likes the comment, `false` removes the like. Defaults to `true`. */
+  like?: boolean;
+}
+
+/** Single-item envelope for the comment returned by `inbox.like`. */
+export interface InboxLikeResponse {
+  data: InboxMessage;
+  [key: string]: unknown;
+}
+
 /** The `data` of `inbox.deleteMessage()`. */
 export interface InboxDeletedMessage {
   /** The deleted message id. */
@@ -2368,8 +2388,8 @@ export interface InboxNextUnanswered {
   conversation: InboxConversation;
   /**
    * The unanswered incoming message itself: the customer's latest DM, or the
-   * specific comment. Its `id` is what `inbox.hide` and `inbox.deleteMessage`
-   * take, and the `message_id` to pass to `inbox.reply` on comment threads
+   * specific comment. Its `id` is what `inbox.hide`, `inbox.like` and
+   * `inbox.deleteMessage` take, and the `message_id` to pass to `inbox.reply` on comment threads
    * (so the reply lands under this comment, not under the newest one on the
    * post); its `conversation_id` is what `inbox.reply` takes.
    */

@@ -4,11 +4,13 @@ import type {
   InboxConversationsResponse,
   InboxDeleteMessageResponse,
   InboxHideResponse,
+  InboxLikeResponse,
   InboxMarkReadResponse,
   InboxMessagesResponse,
   InboxNextParams,
   InboxNextResponse,
   InboxReplyResponse,
+  LikeInboxParams,
   ListInboxConversationsParams,
   ListInboxMessagesParams,
   ReplyInboxParams,
@@ -174,6 +176,34 @@ export class InboxResource {
   }
 
   /**
+   * `POST /inbox/messages/:messageId/like` - like or unlike a comment
+   * someone left on one of your posts, as the connected Page or account.
+   * Facebook Page, LinkedIn Page and TikTok comments (incoming comments
+   * only). The default likes; pass `{ like: false }` to remove the like.
+   * Facebook allows only Like (no Love or other reactions). Liking a
+   * comment that is already liked, or unliking one that is not, succeeds.
+   * Returns the comment after the change, with `liked` set. Requires the
+   * `inbox:write` scope.
+   *
+   * Errors: 400 `unsupported_platform` (not an incoming Facebook, LinkedIn
+   * or TikTok comment), 401 `reauth_required` (the TikTok comments
+   * authorization is missing or expired, or the LinkedIn Page connection expired), 403 `reconnect_required` (the
+   * account was connected without the permission to like comments;
+   * reconnect it in the dashboard), 404 `not_found` (message not in this
+   * workspace) or `account_not_connected`, 502 `platform_error` (the
+   * platform rejected the call).
+   */
+  like(
+    messageId: string,
+    params: LikeInboxParams = {}
+  ): Promise<InboxLikeResponse> {
+    return this.client.post(
+      `/inbox/messages/${encodeURIComponent(messageId)}/like`,
+      params
+    );
+  }
+
+  /**
    * `DELETE /inbox/messages/:messageId` - delete a comment someone left on
    * one of your posts, on the platform and from the inbox. Facebook,
    * Instagram and TikTok comments only: YouTube's API does not let a channel
@@ -226,7 +256,7 @@ export class InboxResource {
    * Returns `{ data, remaining }`. `data` is `{ conversation, message,
    * messages, reply_window }`, or `null` when nothing is waiting. `message`
    * is the unanswered incoming item itself (the customer's latest DM, or
-   * the specific comment): its `id` is what `inbox.hide` and
+   * the specific comment): its `id` is what `inbox.hide`, `inbox.like` and
    * `inbox.deleteMessage` take and the `message_id` to pass to
    * `inbox.reply` on comment threads, its `conversation_id` is what
    * `inbox.reply` takes. `messages` is the conversation so far, oldest
