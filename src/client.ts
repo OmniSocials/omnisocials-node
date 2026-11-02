@@ -8,6 +8,7 @@ import { PostsResource } from "./resources/posts.js";
 import { MediaResource } from "./resources/media.js";
 import { FoldersResource } from "./resources/folders.js";
 import { HashtagSetsResource } from "./resources/hashtag-sets.js";
+import { TagsResource } from "./resources/tags.js";
 import { ApprovalWorkflowsResource } from "./resources/approval-workflows.js";
 import { AccountsResource } from "./resources/accounts.js";
 import { AnalyticsResource } from "./resources/analytics.js";
@@ -74,6 +75,7 @@ export class OmniSocials {
   readonly media: MediaResource;
   readonly folders: FoldersResource;
   readonly hashtagSets: HashtagSetsResource;
+  readonly tags: TagsResource;
   readonly approvalWorkflows: ApprovalWorkflowsResource;
   readonly accounts: AccountsResource;
   readonly analytics: AnalyticsResource;
@@ -109,6 +111,7 @@ export class OmniSocials {
     this.media = new MediaResource(this);
     this.folders = new FoldersResource(this);
     this.hashtagSets = new HashtagSetsResource(this);
+    this.tags = new TagsResource(this);
     this.approvalWorkflows = new ApprovalWorkflowsResource(this);
     this.accounts = new AccountsResource(this);
     this.analytics = new AnalyticsResource(this);

@@ -459,6 +459,46 @@ await client.posts.create({
 });
 ```
 
+## Post tags
+
+Tags are your workspace's own labels for posts (a hook style, a format, a campaign), to filter posts and compare how each tag did in Analytics. Tags never go to a platform. Uses the `posts:read` / `posts:write` scopes; `analytics.tags()` uses `analytics:read`.
+
+```ts
+const { data: tag } = await client.tags.create({ name: "Question", color: "blue" }); // color optional
+await client.tags.list();
+await client.tags.update(tag.id, { name: "Question hook" });
+const { data: removed } = await client.tags.delete(tag.id); // { tag, posts_untagged }, the posts stay
+
+// Tag a post when you make it (ids or names; a new name becomes a tag, 20 at most)
+await client.posts.create({
+  content: "What would you build with an extra hour a day?",
+  channels: ["instagram", "tiktok"],
+  tags: ["Question", "Talking head"],
+});
+await client.posts.update(postId, { tags: ["Question"] }); // replaces; null or [] removes them all
+
+// Add, remove or replace tags on up to 500 posts at once, published ones included
+const { data: result } = await client.tags.apply({
+  post_ids: ["1024", "1025"],
+  add: ["Question"],
+  remove: [12],
+}); // { updated, posts: [{ id, tags }], not_found }
+
+// Filter by tag (an id or name; several = any of them)
+const { data: questions } = await client.posts.list({ tag: "Question" });
+const { data: overview } = await client.analytics.overview({ period: "30d", tag: ["Question", "Poll"] });
+
+// Compare tags against your normal
+const { data: compare } = await client.analytics.tags({ start_date: "2026-08-01", platform: "tiktok" });
+for (const row of compare.tags) {
+  console.log(row.tag.name, row.vs_normal, row.enough_posts ? "" : "(few posts)");
+}
+```
+
+`analytics.tags()` returns `{ period, platform, min_posts, tags, untagged, normals }`. Each row in `tags` has the `tag`, `posts`, `measured`, `median_impressions`, `engagement_rate` (percent), `vs_normal` (a fraction: `0.38` = 38% above your normal, where each post is measured against the median impressions of its own channel), `best_channel` and `enough_posts` (false below `min_posts` measured posts, default 5: read `vs_normal` then as a hint only). Comparable tags come first, best first; `untagged` covers the posts without a tag. The default period is the last 90 days.
+
+Every post carries `tags` and `trial_reel` (`{ strategy: "MANUAL" | "SS_PERFORMANCE" }` for an Instagram Trial Reel, else `null`), and so does each item of `analytics.posts(ids)`. Errors: `404 tag_not_found`, `409 tag_exists` (the existing tag is in `error.body.error.tag`), `409 tag_limit_reached` (200 per workspace), `400 invalid_tag_name` / `invalid_tag_color` / `invalid_tags` / `invalid_post_ids` / `too_many_posts` / `too_many_tags`.
+
 ## Accounts
 
 ```ts

@@ -7,6 +7,8 @@
  * `Record<string, unknown>` passthrough on purpose.
  */
 
+import type { Tag, TagRef, TrialReel } from "./tag-types.js";
+
 // ─── Envelope ────────────────────────────────────────────────────────────────
 
 export interface Pagination {
@@ -433,6 +435,14 @@ export interface CreatePostParams {
   /** Restrict the hashtags to a subset of the post's channels. Omit for all. */
   hashtag_platforms?: string[];
   /**
+   * Post tags: tag ids or names (a name matches case-insensitively; a name
+   * that does not exist yet becomes a new tag of the workspace). The
+   * workspace's own labels to filter and compare posts; nothing goes to a
+   * platform. At most 20. Errors: `404 tag_not_found` (an unknown id),
+   * `400 invalid_tags` / `too_many_tags`.
+   */
+  tags?: TagRef[];
+  /**
    * Route the post through a saved approval workflow (id from
    * `approvalWorkflows.list()`). The post is created as `in_approval`
    * (`approval_status: "pending"`) instead of `scheduled`; its approvers are
@@ -530,6 +540,13 @@ export interface UpdatePostParams {
    * Needs the `automations:write` scope.
    */
   comment_dm_automation?: CommentDmAutomationInput | null;
+  /**
+   * Replaces the post's tags (ids or names; a new name becomes a tag);
+   * `null` or `[]` removes them all, omit to leave them untouched. An update
+   * that sends only `tags` works on every post, published and failed ones
+   * included. For many posts at once use `tags.apply()`.
+   */
+  tags?: TagRef[] | null;
   channels?: string[];
   /** Entries accept `{ id, alt }` objects for per-media alt text. */
   media_ids?: MediaIdInput[] | Record<string, MediaIdInput[]>;
@@ -576,6 +593,12 @@ export interface ListPostsParams {
   limit?: number;
   /** Items to skip (default 0). */
   offset?: number;
+  /**
+   * Only posts with this tag: a tag id or name. Several (an array, or a
+   * comma-separated string) match posts with any of them. An unknown tag
+   * answers `404 tag_not_found`.
+   */
+  tag?: TagRef | TagRef[];
 }
 
 export interface RecentPlatformPostsParams {
@@ -719,6 +742,10 @@ export interface Post {
    * none.
    */
   comment_dm_automation?: PostCommentDmAutomation | null;
+  /** The post's tags (the workspace's own labels; never sent to a platform). */
+  tags?: Tag[];
+  /** Set when the post is an Instagram Trial Reel (`instagram.is_trial_reel`), `null` otherwise. */
+  trial_reel?: TrialReel | null;
   [key: string]: unknown;
 }
 
@@ -1279,6 +1306,10 @@ export interface PostAnalyticsStorySlide {
 export interface PostAnalytics {
   post_id: string;
   platforms: Record<string, PostAnalyticsPlatformEntry>;
+  /** Bulk `analytics.posts()` only: set when the post went to Instagram as a Trial Reel. */
+  trial_reel?: TrialReel | null;
+  /** Bulk `analytics.posts()` only: the post's tags. */
+  tags?: Tag[];
   [key: string]: unknown;
 }
 
@@ -1324,6 +1355,12 @@ export interface AnalyticsOverviewParams {
   start_date?: string;
   /** ISO date (YYYY-MM-DD); use with start_date instead of period. */
   end_date?: string;
+  /**
+   * Post numbers of the posts with this tag only (a tag id or name; several
+   * = any of them). Account numbers stay those of the whole account. An
+   * unknown tag answers `404 tag_not_found`.
+   */
+  tag?: TagRef | TagRef[];
 }
 
 export interface AccountAnalyticsParams {

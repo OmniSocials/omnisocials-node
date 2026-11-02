@@ -24,6 +24,7 @@ export class PostsResource {
       status: params.status,
       limit: params.limit,
       offset: params.offset,
+      tag: Array.isArray(params.tag) ? params.tag.join(",") : params.tag,
     });
   }
 

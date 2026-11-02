@@ -49,8 +49,9 @@ const surface = {
   media: ["list", "get", "upload", "uploadFromUrl", "uploadFromBase64", "createUploadUrl", "check", "update", "delete"],
   folders: ["list", "create", "update", "delete"],
   hashtagSets: ["list", "get", "create", "update", "delete"],
+  tags: ["list", "create", "update", "delete", "apply"],
   accounts: ["list", "get"],
-  analytics: ["post", "posts", "overview", "accounts", "bestTimes"],
+  analytics: ["post", "posts", "overview", "accounts", "bestTimes", "tags"],
   locations: ["search", "validate"],
   pinterest: ["listProducts", "validateProduct"],
   automations: ["list", "get", "create", "update", "delete", "listEvents"],
@@ -73,6 +74,70 @@ const rl = new RateLimitError({ status: 429, code: "rate_limit_exceeded", messag
 assert.ok(rl instanceof APIError && rl instanceof OmniSocialsError);
 assert.equal(rl.retryAfter, 45);
 assert.equal(rl.status, 429);
+
+// ─── Post tags: method, path, query and body ──────────────────────────────────
+{
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: new URL(String(url)), method: init.method, body: init.body });
+    return new Response(JSON.stringify({ data: {} }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    const tagged = new OmniSocials({ apiKey: "omsk_live_smoke", maxRetries: 0 });
+    const last = () => calls[calls.length - 1];
+
+    await tagged.tags.list();
+    assert.equal(last().method, "GET");
+    assert.equal(last().url.pathname, "/v1/tags");
+
+    await tagged.tags.create({ name: "Question", color: "blue" });
+    assert.equal(last().method, "POST");
+    assert.equal(last().url.pathname, "/v1/tags");
+    assert.deepEqual(JSON.parse(last().body), { name: "Question", color: "blue" });
+
+    await tagged.tags.update(12, { name: "Questions" });
+    assert.equal(last().method, "PATCH");
+    assert.equal(last().url.pathname, "/v1/tags/12");
+    assert.deepEqual(JSON.parse(last().body), { name: "Questions" });
+
+    await tagged.tags.delete(12);
+    assert.equal(last().method, "DELETE");
+    assert.equal(last().url.pathname, "/v1/tags/12");
+
+    await tagged.tags.apply({ post_ids: ["1024", "1025"], add: ["Question", 7], set: undefined });
+    assert.equal(last().method, "POST");
+    assert.equal(last().url.pathname, "/v1/tags/apply");
+    assert.deepEqual(JSON.parse(last().body), { post_ids: ["1024", "1025"], add: ["Question", 7] });
+
+    await tagged.analytics.tags({ start_date: "2026-08-01", platform: "tiktok", min_posts: 3 });
+    assert.equal(last().url.pathname, "/v1/analytics/tags");
+    assert.equal(last().url.searchParams.get("start_date"), "2026-08-01");
+    assert.equal(last().url.searchParams.get("platform"), "tiktok");
+    assert.equal(last().url.searchParams.get("min_posts"), "3");
+    assert.equal(last().url.searchParams.has("end_date"), false);
+
+    await tagged.posts.list({ tag: ["Question", 7] });
+    assert.equal(last().url.pathname, "/v1/posts");
+    assert.equal(last().url.searchParams.get("tag"), "Question,7");
+
+    await tagged.analytics.overview({ period: "30d", tag: "Question" });
+    assert.equal(last().url.pathname, "/v1/analytics/overview");
+    assert.equal(last().url.searchParams.get("tag"), "Question");
+
+    await tagged.posts.update("1024", { tags: null });
+    assert.equal(last().method, "PATCH");
+    assert.deepEqual(JSON.parse(last().body), { tags: null });
+
+    await tagged.posts.create({ content: "Hi", channels: ["instagram"], tags: ["Question"] });
+    assert.deepEqual(JSON.parse(last().body).tags, ["Question"]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
 
 // ─── Webhook signature round-trip ─────────────────────────────────────────────
 // Generate a signature exactly like backend/services/webhooks/webhookDispatcher.js:

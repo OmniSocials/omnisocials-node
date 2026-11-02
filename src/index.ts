@@ -22,6 +22,7 @@ export { PostsResource } from "./resources/posts.js";
 export { MediaResource } from "./resources/media.js";
 export { FoldersResource } from "./resources/folders.js";
 export { HashtagSetsResource } from "./resources/hashtag-sets.js";
+export { TagsResource } from "./resources/tags.js";
 export { ApprovalWorkflowsResource } from "./resources/approval-workflows.js";
 export { AccountsResource } from "./resources/accounts.js";
 export { AnalyticsResource } from "./resources/analytics.js";
@@ -193,3 +194,20 @@ export type {
   // Health
   HealthResponse,
 } from "./types.js";
+
+export type {
+  // Post tags
+  Tag,
+  TagColor,
+  TagRef,
+  TrialReel,
+  CreateTagParams,
+  UpdateTagParams,
+  TagDeleteResult,
+  ApplyTagsParams,
+  TagApplyResult,
+  TagAnalyticsParams,
+  TagSummary,
+  TagComparison,
+  TagAnalytics,
+} from "./tag-types.js";
