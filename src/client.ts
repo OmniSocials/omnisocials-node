@@ -19,7 +19,7 @@ import { AutomationsResource } from "./resources/automations.js";
 import { WebhooksResource } from "./resources/webhooks.js";
 import { InboxResource } from "./resources/inbox.js";
 
-export const VERSION = "0.13.0";
+export const VERSION = "0.14.0";
 
 const DEFAULT_BASE_URL = "https://api.omnisocials.com/v1";
 const DEFAULT_TIMEOUT_MS = 30_000;
