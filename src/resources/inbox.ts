@@ -204,8 +204,9 @@ export class InboxResource {
   }
 
   /**
-   * `DELETE /inbox/messages/:messageId` - delete a comment someone left on
-   * one of your posts, on the platform and from the inbox. Facebook,
+   * `DELETE /inbox/messages/:messageId` - delete a comment on one of your
+   * posts, on the platform and from the inbox: a comment someone left, or one
+   * of your own replies (`direction: "outgoing"`). Facebook,
    * Instagram and TikTok comments only: YouTube's API does not let a channel
    * delete other people's comments, hide those instead (`inbox.hide`).
    * Replies under the deleted comment go with it (the platforms cascade the

@@ -24,8 +24,8 @@ export class WebhooksResource {
   /**
    * `POST /webhooks` - register an endpoint for event deliveries
    * (post.scheduled, post.published, post.failed, post.approved,
-   * post.rejected). The response includes the signing `secret`; save it, it
-   * is only shown once.
+   * post.rejected, and ad.status_changed for ad campaigns). The response
+   * includes the signing `secret`; save it, it is only shown once.
    */
   create(params: CreateWebhookParams): Promise<ItemResponse<Webhook>> {
     return this.client.post("/webhooks", params);

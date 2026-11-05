@@ -56,9 +56,14 @@ export class AutomationsResource {
    * rules: one private reply per comment, within 7 days; OmniSocials caps
    * sends at 180 DMs an hour per account and platform, and on X at 15 per
    * 15 minutes and 450 a day; an answer over a cap waits in a queue
-   * (`queued`) for up to an hour. Requires the
+   * (`queued`) for up to an hour. `actions.follow_gate` (Instagram only)
+   * sends the link only to people who follow the account: a comment gets a
+   * first message with a button, a tap checks the follow, and a DM or story
+   * reply is checked at once; the person waits as outcome `waiting` until
+   * they follow. Requires the
    * `automations:write` scope (opt-in on the API key). Errors:
-   * `400 validation_error`, `400 post_not_instagram`, `400 post_not_facebook`,
+   * `400 validation_error`, `400 follow_gate_instagram_only`,
+   * `400 post_not_instagram`, `400 post_not_facebook`,
    * `400 post_required`, `404 post_not_found`, `404 instagram_media_not_found`,
    * `404 facebook_post_not_found`, `409 instagram_not_connected`,
    * `409 instagram_needs_reauth`, `409 facebook_not_connected`,
@@ -75,7 +80,9 @@ export class AutomationsResource {
    * their value: new `trigger.keywords` keep the kinds, the scope and the
    * match; a new `actions.dm.text` keeps the public reply; `limits.stop_at`
    * keeps `max_sends`. `public_reply.enabled: false` or `variations: []`
-   * turns the public reply off; `limits.max_sends: null` removes that
+   * turns the public reply off; `follow_gate: { enabled: false }` turns
+   * Follow first off and keeps its texts, `follow_gate: null` turns it off,
+   * new texts keep the switch; `limits.max_sends: null` removes that
    * limit. `status: "paused"` pauses and `"active"` resumes; another
    * `post_id` / `instagram_media_id` / `facebook_post_id` moves the
    * automation to that post. The platform cannot change
@@ -99,7 +106,7 @@ export class AutomationsResource {
   /**
    * `GET /automations/:id/events` - the automation's activity: one event per
    * person it answered, skipped or failed on. Filter by `outcome` (`sent`,
-   * `skipped`, `failed`, `pending`, `queued`, `opted_out`); `limit` is 1 to 100 (default 25),
+   * `skipped`, `failed`, `pending`, `queued`, `opted_out`, `waiting`); `limit` is 1 to 100 (default 25),
    * `offset` skips. Requires the `automations:read` scope.
    *
    * Note the response shape (see {@link AutomationEventsResponse}): not the

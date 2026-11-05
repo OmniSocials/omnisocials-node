@@ -23,6 +23,8 @@ export { MediaResource } from "./resources/media.js";
 export { FoldersResource } from "./resources/folders.js";
 export { HashtagSetsResource } from "./resources/hashtag-sets.js";
 export { TagsResource } from "./resources/tags.js";
+export { LimitsResource } from "./resources/limits.js";
+export { FeatureRequestsResource } from "./resources/feature-requests.js";
 export { ApprovalWorkflowsResource } from "./resources/approval-workflows.js";
 export { AccountsResource } from "./resources/accounts.js";
 export { AnalyticsResource } from "./resources/analytics.js";
@@ -30,6 +32,7 @@ export { LocationsResource } from "./resources/locations.js";
 export { AudioResource } from "./resources/audio.js";
 export { PinterestResource } from "./resources/pinterest.js";
 export { AutomationsResource } from "./resources/automations.js";
+export { AdsResource, AdDraftsResource } from "./resources/ads.js";
 export { WebhooksResource } from "./resources/webhooks.js";
 export { InboxResource } from "./resources/inbox.js";
 
@@ -146,9 +149,13 @@ export type {
   AutomationStats,
   AutomationPost,
   AutomationEvent,
+  AutomationEventFollowGate,
   AutomationEventsResponse,
   AutomationTriggerInput,
   AutomationActionsInput,
+  FollowGate,
+  FollowGateMessage,
+  FollowGateInput,
   AutomationLimitsInput,
   CreateAutomationParams,
   UpdateAutomationParams,
@@ -158,6 +165,46 @@ export type {
   AutomationPlatform,
   CommentDmPlatform,
   PostCommentDmAutomation,
+  // Ads
+  AdId,
+  AdPlatform,
+  AdAccount,
+  AdAccountsResponse,
+  AdBudget,
+  AdSchedule,
+  AdObjective,
+  AdCampaignStatus,
+  AdCampaign,
+  ListAdCampaignsParams,
+  AdCreative,
+  BoostPostParams,
+  BoostPostMultiParams,
+  AdMultiBoostResult,
+  AdMultiActivateResult,
+  AdMultiResponse,
+  CreateAdCampaignParams,
+  UpdateAdCampaignParams,
+  BoostSuggestion,
+  AdsOverview,
+  KeywordIdea,
+  KeywordResearchParams,
+  KeywordResearchResult,
+  KeywordMetricsParams,
+  KeywordMetricsResult,
+  AdNetworkState,
+  AdCapabilities,
+  AdDraftDefaults,
+  AdMediaFile,
+  AdDraftAd,
+  AdDraftTargeting,
+  AdDraftParams,
+  AdDraftIssue,
+  AdDraftCampaign,
+  AdDraft,
+  AttachAdDraftAccountParams,
+  LaunchAdDraftParams,
+  LaunchAdDraftResult,
+  AdStatusChangedEventData,
   // Webhooks
   Webhook,
   WebhookEventType,
@@ -211,3 +258,19 @@ export type {
   TagComparison,
   TagAnalytics,
 } from "./tag-types.js";
+
+export type {
+  // Limits and feature requests
+  Limit,
+  LimitKind,
+  LimitArea,
+  ListLimitsParams,
+  LimitsResponse,
+  FeatureRequest,
+  FeatureRequestStatus,
+  FeatureRequestSource,
+  FeatureRequestTeamReply,
+  CreateFeatureRequestParams,
+  FeatureRequestOutcome,
+  FeatureRequestCreateResult,
+} from "./feature-request-types.js";

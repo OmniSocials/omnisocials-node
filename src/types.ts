@@ -594,6 +594,14 @@ export interface ListPostsParams {
   /** Items to skip (default 0). */
   offset?: number;
   /**
+   * Only posts whose `schedule_at` is on or after this moment (for a post sent
+   * at once: when it was sent). "YYYY-MM-DD" (that UTC day), "YYYY-MM" (the
+   * whole month) or an ISO 8601 datetime. Drafts without a date never match.
+   */
+  start_date?: string;
+  /** Only posts whose `schedule_at` is on or before this moment (inclusive). Same formats as `start_date`. */
+  end_date?: string;
+  /**
    * Only posts with this tag: a tag id or name. Several (an array, or a
    * comma-separated string) match posts with any of them. An unknown tag
    * answers `404 tag_not_found`.
@@ -1699,9 +1707,18 @@ export type AutomationStatus = "active" | "paused" | "completed";
  * `queued` = the answer waits for a free slot under the send cap (X 15 per 15
  * minutes and 450 a day, Instagram and Facebook 180 an hour) and goes out
  * within the hour, else it becomes `skipped` with `rate_limited`.
- * `opted_out` = the person replied STOP on X.
+ * `opted_out` = the person replied STOP on X. `waiting` = Follow first
+ * (Instagram): the person got the follow ask and the link goes out after the
+ * follow (see {@link AutomationEventFollowGate}).
  */
-export type AutomationEventOutcome = "sent" | "skipped" | "failed" | "pending" | "queued" | "opted_out";
+export type AutomationEventOutcome =
+  | "sent"
+  | "skipped"
+  | "failed"
+  | "pending"
+  | "queued"
+  | "opted_out"
+  | "waiting";
 
 /** The `trigger` block of an {@link Automation}. */
 export interface AutomationTrigger {
@@ -1723,11 +1740,39 @@ export interface AutomationTrigger {
   [key: string]: unknown;
 }
 
+/** One message of Follow first: its text and the title of its one button. */
+export interface FollowGateMessage {
+  /** Max 640 characters. */
+  text: string;
+  /** Max 20 characters. */
+  button: string;
+}
+
+/**
+ * Follow first (Instagram only): the link DM goes out only to people who
+ * follow the account. A comment gets `first_message` as the private reply,
+ * with one button; a tap makes OmniSocials ask Instagram whether the person
+ * follows. A follower gets `actions.dm.text`; anyone else gets
+ * `not_following` with its button, and every later tap checks again. A DM
+ * or a story reply is checked at once. When Instagram gives no answer the
+ * link goes out anyway, marked not checked. The texts read as the defaults
+ * when none were given.
+ */
+export interface FollowGate {
+  enabled: boolean;
+  /** Default "Tap the button and I'll send you the link 👇" / "Send me the link". */
+  first_message: FollowGateMessage;
+  /** Default "Almost there! Follow us first, then tap the button again." / "I follow now". */
+  not_following: FollowGateMessage;
+}
+
 /** The `actions` block of an {@link Automation}: the DM, and the optional public reply under the comment. */
 export interface AutomationActions {
   dm: { text: string };
   /** Comment kind only: one of `variations` is posted under the comment. */
   public_reply?: { enabled: boolean; variations: string[] };
+  /** Follow first with its texts; `null` on Facebook and X automations (no follow status there). */
+  follow_gate?: FollowGate | null;
   [key: string]: unknown;
 }
 
@@ -1744,6 +1789,8 @@ export interface AutomationStats {
   sent: number;
   skipped: number;
   failed: number;
+  /** Follow first: people who followed after the follow ask, then got the link. */
+  followed: number;
   last_event_at: string | null;
 }
 
@@ -1852,9 +1899,27 @@ export interface AutomationEvent {
   message: string | null;
   public_reply: string | null;
   platform_message_id: string | null;
+  /** Follow first: where this person is; `null` when the automation had no follow ask for them. */
+  follow_gate: AutomationEventFollowGate | null;
   created_at: string;
   sent_at: string | null;
   [key: string]: unknown;
+}
+
+/** `follow_gate` of an {@link AutomationEvent}. */
+export interface AutomationEventFollowGate {
+  /** `waiting` = asked to follow, no link yet; `done` = the link went out. */
+  state: "waiting" | "done" | (string & {}) | null;
+  /** When the follow ask went out (ISO 8601). */
+  asked_at: string | null;
+  /** How often the person tapped the button. After 10 "not yet" answers their taps get no answer. */
+  taps: number;
+  /** `true` = a confirmed follower got the link; `null` = the link went out unchecked (Instagram gave no answer). */
+  followed: boolean | null;
+  /** Whether Instagram answered the follow check. */
+  checked: boolean;
+  /** `true` = the person followed after the ask; `false` with `followed: true` = they already followed. */
+  after_ask: boolean;
 }
 
 /**
@@ -1884,12 +1949,32 @@ export interface AutomationTriggerInput {
   match?: AutomationMatch;
 }
 
+/**
+ * `follow_gate` on `automations.create()` / `automations.update()` and in
+ * `comment_dm_automation`. Every key is optional; an empty or missing text
+ * or button is the default. `enabled: true` on a Facebook or X automation is
+ * a `400 follow_gate_instagram_only`; a text over 640 characters or a button
+ * over 20 is a `400 validation_error`.
+ */
+export interface FollowGateInput {
+  enabled?: boolean;
+  first_message?: { text?: string; button?: string };
+  not_following?: { text?: string; button?: string };
+}
+
 /** `actions` on `automations.create()` / `automations.update()` and in `comment_dm_automation`. */
 export interface AutomationActionsInput {
-  /** The DM to send (`text` max 1000 characters). */
+  /** The DM to send (`text` max 1000 characters). With Follow first on, this is the link message. */
   dm: { text: string };
   /** Comment kind only: up to 10 variations of 300 characters; one is posted under the comment. */
   public_reply?: { enabled?: boolean; variations?: string[] };
+  /**
+   * Follow first (Instagram only): the link goes out only after the person
+   * follows the account. `null` or `false` turns it off and keeps the texts.
+   * In `comment_dm_automation` with `platforms: ["instagram", "facebook"]`
+   * it applies to the Instagram automation; the Facebook one sends at once.
+   */
+  follow_gate?: FollowGateInput | false | null;
 }
 
 /** `limits` on `automations.create()` / `automations.update()` and in `comment_dm_automation`. */
@@ -1958,6 +2043,8 @@ export interface UpdateAutomationParams {
   /**
    * Merged into the stored actions: a new `dm.text` keeps the public reply;
    * `public_reply: { enabled: false }` or `{ variations: [] }` turns it off.
+   * `follow_gate` merges too: `{ enabled: false }` keeps the texts, new texts
+   * keep the switch, `null` turns it off; leaving it out keeps the stored one.
    */
   actions?: AutomationActionsInput;
   /**
@@ -2017,6 +2104,488 @@ export interface PostCommentDmAutomation extends Automation {
   automations: { id: string; platform: CommentDmPlatform; status: AutomationStatus }[];
 }
 
+// ─── Ads ─────────────────────────────────────────────────────────────────────
+//
+// Ads spend real money once a campaign starts. Boosts, campaigns and drafts
+// are created as drafts (no spend); `ads.activate()`, `ads.activateMulti()`,
+// `ads.drafts.launch()` and a budget raise through `ads.update()` start or
+// raise spend, and each needs the amount again as a confirmation. Budgets are
+// in MAJOR currency units (10 = €10) in the ad account's currency. Ad
+// accounts are connected and picked in the OmniSocials dashboard. The scopes
+// `ads:read` / `ads:write` are opt-in on the API key (the "Ads" switch).
+// Ad account and campaign ids are 64-bit and arrive as JSON strings; every
+// method and body takes them as a string or a number.
+
+/** A 64-bit ad id: a string in responses, a string or a number in requests. */
+export type AdId = string;
+
+/** An ads network. */
+export type AdPlatform = "meta" | "pinterest" | "tiktok" | "linkedin" | "x" | "google";
+
+/** A connected ad account (`ads.listAccounts()`). */
+export interface AdAccount {
+  /** OmniSocials ad account ID (use as `ad_account_id`). */
+  id: AdId;
+  platform: AdPlatform;
+  /** The network's own ad account ID (e.g. Meta `act_...`). */
+  external_account_id: string;
+  account_info?: {
+    name?: string;
+    /** Billing currency; campaign budgets must use it. */
+    currency?: string;
+    timezone?: string;
+    /**
+     * `false` when no payment method is set on the network; the ads do not
+     * run until the person adds one in the network's Ads Manager. `null` or
+     * absent when the network does not say.
+     */
+    billing_ok?: boolean | null;
+  };
+  /** Whether a person picked this account for spending in the dashboard. */
+  is_selected: boolean;
+  status: string;
+  needs_reauth?: boolean;
+  created_at: string;
+  [key: string]: unknown;
+}
+
+/** Response of `ads.listAccounts()`. */
+export interface AdAccountsResponse {
+  data: AdAccount[];
+  /** The ads networks this server supports. */
+  platforms_available?: AdPlatform[];
+  [key: string]: unknown;
+}
+
+export interface AdBudget {
+  /** `daily` (default) or `lifetime` (the whole schedule). */
+  type?: "daily" | "lifetime";
+  /** MAJOR currency units (10 = €10). Network minimums apply (e.g. TikTok 20 a day). */
+  amount: number;
+  /** 3-letter ISO code; must match the ad account's currency. */
+  currency: string;
+}
+
+export interface AdSchedule {
+  start_at?: string;
+  end_at?: string;
+}
+
+export type AdObjective =
+  | "engagement"
+  | "traffic"
+  | "awareness"
+  | "video_views"
+  | "lead_generation"
+  | "conversions";
+
+export type AdCampaignStatus =
+  | "draft"
+  | "pending_review"
+  | "active"
+  | "rejected"
+  | "paused"
+  | "completed"
+  | "error";
+
+export interface AdCampaign {
+  id: AdId;
+  name: string;
+  platform: AdPlatform;
+  campaign_type: "campaign" | "boost";
+  objective?: AdObjective | string;
+  /** Created as `draft`; spends only after activation. `pending_review` = in the network's ad review. */
+  status: AdCampaignStatus;
+  budget: AdBudget;
+  /** Unified targeting (`countries`, ages, genders...). `raw_targeting` passes a native spec through. */
+  targeting?: Record<string, unknown>;
+  schedule?: AdSchedule;
+  /** Latest synced numbers: spend (major units), impressions, clicks, ctr. */
+  metrics?: Record<string, number | string>;
+  /** The network's campaign ID; `null` while a draft. */
+  external_campaign_id?: string | null;
+  /** Readable reason when the status is `error` or `rejected`. */
+  errors?: string | null;
+  /** Set on a campaign of a "Create an ad" draft: start it with `ads.drafts.launch()`. */
+  group_id?: string | null;
+  ad_account_id?: AdId | null;
+  /** Campaign rows use camelCase timestamps (`createdAt`), unlike ad accounts. */
+  createdAt: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface ListAdCampaignsParams {
+  status?: AdCampaignStatus;
+  platform?: AdPlatform;
+  campaign_type?: "campaign" | "boost";
+  /** 1 to 100, default 25. */
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Network-specific creative fields of a boost.
+ * - TikTok (Spark Ads): `spark_auth_code` is required. The post owner makes it
+ *   in the TikTok app (video, "...", Ad settings, Ad authorization).
+ * - Google (Demand Gen, YouTube videos): `headlines`, `descriptions` and
+ *   `logo_url` are required.
+ * - Meta, Pinterest, X and LinkedIn boosts need none.
+ */
+export interface AdCreative {
+  spark_auth_code?: string;
+  /** Google: 1 to 5 headlines of up to 40 characters. */
+  headlines?: string[];
+  /** Google: 1 to 5 descriptions of up to 90 characters. */
+  descriptions?: string[];
+  /** Google: a square logo picture. */
+  logo_url?: string;
+  long_headlines?: string[];
+  business_name?: string;
+  /** TikTok traffic boosts: the website the button opens (required there). */
+  link?: string;
+  landing_page_url?: string;
+  [key: string]: unknown;
+}
+
+export interface BoostPostParams {
+  /** OmniSocials post ID of a published post. */
+  post_id: number | string;
+  /** OmniSocials ad account ID (from `ads.listAccounts()`, picked in the dashboard). */
+  ad_account_id: number | string;
+  budget: AdBudget;
+  objective?: AdObjective;
+  targeting?: Record<string, unknown>;
+  schedule?: AdSchedule;
+  creative?: AdCreative;
+  name?: string;
+}
+
+export interface BoostPostMultiParams extends Omit<BoostPostParams, "ad_account_id"> {
+  /** Up to 10 ad accounts: one draft boost per account, each with the SAME budget. */
+  ad_account_ids: (number | string)[];
+}
+
+/** One target of `ads.boostMulti()`. One failed target never stops the others. */
+export interface AdMultiBoostResult {
+  ad_account_id: AdId;
+  platform?: AdPlatform | null;
+  ok: boolean;
+  campaign?: AdCampaign;
+  error?: string;
+  code?: string;
+}
+
+/** One campaign of `ads.activateMulti()`. */
+export interface AdMultiActivateResult {
+  campaign_id: AdId;
+  ok: boolean;
+  campaign?: AdCampaign;
+  error?: string;
+  code?: string;
+}
+
+/** `{ results }` of `ads.boostMulti()` and `ads.activateMulti()` (no `data` envelope). */
+export interface AdMultiResponse<T> {
+  results: T[];
+  [key: string]: unknown;
+}
+
+export interface CreateAdCampaignParams {
+  ad_account_id: number | string;
+  name: string;
+  budget: AdBudget;
+  objective?: AdObjective;
+  targeting?: Record<string, unknown>;
+  schedule?: AdSchedule;
+}
+
+export interface UpdateAdCampaignParams {
+  name?: string;
+  budget?: AdBudget;
+  /** Required to RAISE the budget of a running campaign: the new amount again. */
+  confirm_budget_amount?: number;
+  targeting?: Record<string, unknown>;
+  schedule?: AdSchedule;
+}
+
+/** An organic post that does better than the workspace median: a boost candidate. */
+export interface BoostSuggestion {
+  /** The OmniSocials post ID, as a string. */
+  post_id: string;
+  platform: string;
+  published_at: string;
+  metric_value: number;
+  workspace_median: number;
+  /** How many times the median. */
+  multiplier: number;
+  reason: string;
+  description_snippet?: string;
+  thumbnail_url?: string;
+  [key: string]: unknown;
+}
+
+export interface AdsOverview {
+  connected_accounts: number;
+  campaigns_total: number;
+  campaigns_by_status: Record<string, number>;
+  totals: { spend: number; impressions: number; clicks: number };
+  [key: string]: unknown;
+}
+
+// Keyword research (Google Ads; read-only, never spends)
+
+export interface KeywordIdea {
+  keyword: string;
+  /** Average monthly Google searches over the last 12 months. */
+  avg_monthly_searches: number;
+  competition: "low" | "medium" | "high" | "unspecified";
+  /** 0 to 100. */
+  competition_index: number | null;
+  /** Top-of-page bid range in the ad account's currency (major units). */
+  low_top_of_page_bid: number | null;
+  high_top_of_page_bid: number | null;
+  monthly_searches: { year: number | null; month: number | null; searches: number }[];
+  /** Only on `ads.keywordMetrics()`. */
+  close_variants?: string[];
+}
+
+export interface KeywordResearchParams {
+  /** Seed keywords, up to 20. Give `keywords`, `url` or both. */
+  keywords?: string[];
+  /** A landing page or homepage to take ideas from. */
+  url?: string;
+  /** ISO 3166-1 alpha-2, default `US`. */
+  country?: string;
+  /** ISO 639-1, default `en`. */
+  language?: string;
+  /** 1 to 500, default 100. */
+  limit?: number;
+  /** Only needed when the workspace has more than one Google Ads account. */
+  ad_account_id?: string;
+}
+
+export interface KeywordResearchResult {
+  ad_account_id: string;
+  country: string;
+  language: string;
+  seed: { keywords: string[]; url: string | null };
+  total: number;
+  cached: boolean;
+  ideas: KeywordIdea[];
+}
+
+export interface KeywordMetricsParams {
+  /** The exact keywords to measure. */
+  keywords: string[];
+  country?: string;
+  language?: string;
+  ad_account_id?: string;
+}
+
+export interface KeywordMetricsResult {
+  ad_account_id: string;
+  country: string;
+  language: string;
+  total: number;
+  cached: boolean;
+  keywords: KeywordIdea[];
+}
+
+// "Create an ad" drafts: one campaign per network with the same ads.
+
+/** A network's state on this server: `preview` = your organisation only. */
+export type AdNetworkState = "live" | "preview" | "coming_soon";
+
+/** `ads.capabilities()`: what each network accepts for a new ad. */
+export interface AdCapabilities {
+  networks: {
+    key: AdPlatform;
+    label: string;
+    runs_on: string;
+    identity: string;
+    goals: Record<string, { ok: boolean | "approx"; note?: string; reason?: string; needsVideo?: boolean }>;
+    media: Record<string, unknown>;
+    text: Record<string, { max: number; shown: number; required: boolean; field?: boolean; noEmoji?: boolean }>;
+    ctas: string[];
+    no_cta: boolean;
+    extra_fields: string[];
+    min_daily_budget: { default: number; byCurrency?: Record<string, number> };
+    review: string;
+    [key: string]: unknown;
+  }[];
+  goals: string[];
+  ctas: { key: string; label: string }[];
+  /** The networks open to your organisation for new ads. */
+  create_networks: AdPlatform[];
+  network_states?: Record<string, AdNetworkState>;
+  /** Networks where the API and MCP stop at the draft: a person starts and changes those ads in the app. */
+  api_draft_only?: string[];
+  [key: string]: unknown;
+}
+
+/** `ads.drafts.defaults()`: suggested countries and currency for a new ad. */
+export interface AdDraftDefaults {
+  countries: string[];
+  countries_source: "followers" | "timezone" | "ad_account" | null;
+  /** Share of the Instagram followers per country, in percent. */
+  follower_share: { country: string; share: number }[];
+  currency: string;
+  currency_source: "ad_account" | "country" | "default";
+  create_networks: AdPlatform[];
+  /** The workspace's ad account per network. */
+  accounts: Record<
+    string,
+    { id: AdId; name: string | null; currency: string | null; billing_ok: boolean; needs_reauth: boolean }
+  >;
+  [key: string]: unknown;
+}
+
+export interface AdMediaFile {
+  url: string;
+  type: "image" | "video";
+  width?: number;
+  height?: number;
+  /** Seconds, for a video. */
+  duration?: number;
+  /** Cover picture of a video. */
+  thumbnail_url?: string;
+}
+
+/** One ad of a draft: written once, mapped onto every network. */
+export interface AdDraftAd {
+  key?: string;
+  name?: string;
+  media: AdMediaFile[];
+  primary_text: string;
+  /** A second text: the network tests A against B (a second ad). */
+  primary_text_b?: string;
+  headline?: string;
+  description?: string;
+  /** A button key from `ads.capabilities()` `ctas`. */
+  cta?: string;
+  link: string;
+  /** Per network text that replaces the shared text. */
+  overrides?: Record<string, { primary_text?: string; headline?: string }>;
+  network?: {
+    google?: { business_name?: string; logo?: { url: string; width?: number; height?: number } };
+  };
+  /**
+   * Meta only, optional: a second picture or video for Stories and Reels,
+   * upright 9:16 (1080 x 1920), the same kind as `media`. Without it Meta
+   * fits the main file. Not for the engagement goal.
+   */
+  placement_media?: {
+    stories_reels?: Omit<AdMediaFile, "duration">;
+  };
+}
+
+export interface AdDraftTargeting {
+  /** ISO country codes. */
+  countries: string[];
+  /** `true` lets the network find the audience (no age or gender limits). */
+  automatic_audience?: boolean;
+  age_min?: number;
+  age_max?: number;
+  genders?: ("male" | "female")[];
+  placements?: "automatic" | "feeds";
+  /** LinkedIn's EU political ads statement. */
+  political_intent?: "NOT_POLITICAL" | "POLITICAL";
+  /** Meta's special ad categories (e.g. `HOUSING`, `EMPLOYMENT`, `FINANCIAL_PRODUCTS_SERVICES`). */
+  special_ad_categories?: string[];
+  /** The countries the special ad categories apply to (ISO codes, up to 25). */
+  special_ad_category_country?: string[];
+  /**
+   * Meta's verified payer and beneficiary per regional category, for example
+   * `{ TAIWAN_UNIVERSAL: { beneficiary: "...", payer: "..." } }` (Taiwan and
+   * Singapore always need one).
+   */
+  regional_identities?: Record<string, { beneficiary: string; payer?: string }>;
+}
+
+/** Body of `ads.drafts.create()` and `ads.drafts.update()` (the full draft). */
+export interface AdDraftParams {
+  name?: string;
+  objective: "traffic" | "engagement" | "awareness" | "video_views";
+  /** Network keys, or `{ platform, budget_amount?, ad_account_id? }` per network. */
+  platforms: (AdPlatform | { platform: AdPlatform; budget_amount?: number; ad_account_id?: number | string })[];
+  /** The daily amount per network, in major units. */
+  budget: { amount: number; currency: string };
+  /** `duration_days: null` = runs until it is stopped. */
+  schedule?: { duration_days?: number | null };
+  targeting: AdDraftTargeting;
+  ads: AdDraftAd[];
+}
+
+export interface AdDraftIssue {
+  field: string;
+  code: string;
+  message: string;
+}
+
+export interface AdDraftCampaign {
+  id: AdId;
+  platform: AdPlatform;
+  status: AdCampaignStatus | string;
+  /** The network never started: a save changes it, a launch starts it. */
+  editable?: boolean;
+  external_campaign_id?: string | null;
+  budget: AdBudget | null;
+  ad_account: {
+    id: AdId;
+    name: string | null;
+    currency: string | null;
+    billing_ok: boolean;
+    needs_reauth: boolean;
+  } | null;
+  errors: string | null;
+  readiness: {
+    ready: boolean;
+    issues: AdDraftIssue[];
+    ads: { key: string; index: number; ready: boolean; issues: AdDraftIssue[] }[];
+  };
+}
+
+export interface AdDraft {
+  group_id: string;
+  name: string;
+  objective: string;
+  /** `launched` = at least one network started. */
+  status: "draft" | "launched";
+  /** At least one network never started: `ads.drafts.launch()` can start it. */
+  can_launch?: boolean;
+  budget: { type: "daily"; amount: number | null; currency: string | null };
+  schedule: { duration_days: number | null };
+  targeting: AdDraftTargeting;
+  ads: AdDraftAd[];
+  campaigns: AdDraftCampaign[];
+  /** The builder in the dashboard, where a person can check and start the ad. */
+  review_url: string;
+  currency_changed?: { platform: string; from: string; to: string } | null;
+  [key: string]: unknown;
+}
+
+export interface AttachAdDraftAccountParams {
+  platform: AdPlatform;
+  ad_account_id: number | string;
+}
+
+/**
+ * `ads.drafts.launch()`: give `confirm_budget_amount` (one daily amount for
+ * every network) or `confirm_budget_amounts` (per campaign ID). Each must
+ * equal that campaign's daily amount, else `400 budget_confirmation_required`
+ * and nothing is written.
+ */
+export interface LaunchAdDraftParams {
+  confirm_budget_amount?: number;
+  confirm_budget_amounts?: Record<string, number>;
+}
+
+export interface LaunchAdDraftResult {
+  group: AdDraft;
+  results: { campaign_id: AdId; platform: AdPlatform; ok: boolean; code?: string; error?: string }[];
+}
+
 // ─── Webhooks (management) ───────────────────────────────────────────────────
 
 export type WebhookEventType =
@@ -2024,7 +2593,8 @@ export type WebhookEventType =
   | "post.published"
   | "post.failed"
   | "post.approved"
-  | "post.rejected";
+  | "post.rejected"
+  | "ad.status_changed";
 
 export interface Webhook {
   id: string;
@@ -2090,11 +2660,31 @@ export interface WebhookEventApproval {
 }
 
 /** The JSON object POSTed to your webhook endpoint (and returned by verifyWebhookSignature). */
+/**
+ * `data` of an `ad.status_changed` delivery: the campaign, not a post. It
+ * fires when a campaign changes status, for example `pending_review` to
+ * `active` (the network's review passed and spend started) or to `rejected`.
+ * Narrow on `event.type === "ad.status_changed"`, then read
+ * `event.data as unknown as AdStatusChangedEventData`.
+ */
+export interface AdStatusChangedEventData {
+  campaign_id: AdId;
+  workspace_id: string | number | null;
+  name: string | null;
+  platform: AdPlatform | null;
+  campaign_type: "campaign" | "boost" | null;
+  status: AdCampaignStatus;
+  previous_status: AdCampaignStatus | null;
+  external_campaign_id: string | null;
+  budget: AdBudget | null;
+}
+
 export interface WebhookEvent {
   /** Unique delivery id. */
   id: string;
   type: WebhookEventType | (string & {});
   created_at: string;
+  /** A post event's data. For `ad.status_changed` see {@link AdStatusChangedEventData}. */
   data: {
     post_id: string | number;
     workspace_id: string | number | null;

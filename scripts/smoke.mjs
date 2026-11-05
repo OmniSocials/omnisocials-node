@@ -55,7 +55,10 @@ const surface = {
   locations: ["search", "validate"],
   pinterest: ["listProducts", "validateProduct"],
   automations: ["list", "get", "create", "update", "delete", "listEvents"],
+  ads: ["listAccounts", "capabilities", "list", "get", "boost", "boostMulti", "create", "update", "activate", "activateMulti", "pause", "resume", "delete", "overview", "suggestions", "researchKeywords", "keywordMetrics"],
   webhooks: ["list", "get", "create", "update", "delete", "rotateSecret"],
+  limits: ["list"],
+  featureRequests: ["create", "list", "get"],
 };
 for (const [resource, methods] of Object.entries(surface)) {
   assert.ok(client[resource], `client.${resource} missing`);
@@ -68,6 +71,51 @@ for (const [resource, methods] of Object.entries(surface)) {
   }
 }
 assert.equal(typeof client.health, "function", "client.health missing");
+for (const method of ["defaults", "create", "get", "update", "delete", "attachAccount", "launch"]) {
+  assert.equal(typeof client.ads.drafts[method], "function", `client.ads.drafts.${method} is not a function`);
+}
+
+// ─── Ads money calls are never sent twice ─────────────────────────────────────
+// A launch or activation that answered 5xx may have started spend, so it is
+// not retried; a plain read is. Uses a stub fetch, no network.
+{
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), method: init.method, body: init.body });
+    return new Response(JSON.stringify({ error: { code: "bad_gateway", message: "upstream" } }), {
+      status: 502,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    const money = new OmniSocials({ apiKey: "omsk_live_smoke", maxRetries: 2 });
+    await assert.rejects(money.ads.drafts.launch("g-1", { confirm_budget_amount: 10 }));
+    assert.equal(calls.length, 1, "a launch must not be retried after a 502");
+    assert.equal(calls[0].method, "POST");
+    assert.match(calls[0].url, /\/ads\/drafts\/g-1\/launch$/);
+    assert.deepEqual(JSON.parse(calls[0].body), { confirm_budget_amount: 10 });
+
+    calls.length = 0;
+    await assert.rejects(money.ads.activate(7, 25));
+    assert.equal(calls.length, 1, "an activation must not be retried after a 502");
+    assert.deepEqual(JSON.parse(calls[0].body), { confirm_budget_amount: 25 });
+
+    calls.length = 0;
+    await assert.rejects(money.ads.drafts.update("g-1", { objective: "traffic", platforms: ["meta"], budget: { amount: 10, currency: "EUR" }, targeting: { countries: ["NL"] }, ads: [] }));
+    assert.equal(calls[0].method, "PUT");
+
+    calls.length = 0;
+    const fast = new OmniSocials({ apiKey: "omsk_live_smoke", maxRetries: 1, timeout: 1000 });
+    const origBackoff = fast.backoffMs;
+    fast.backoffMs = () => 0;
+    await assert.rejects(fast.ads.capabilities());
+    assert.equal(calls.length, 2, "a read is retried after a 502");
+    fast.backoffMs = origBackoff;
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
 
 // Error hierarchy sanity.
 const rl = new RateLimitError({ status: 429, code: "rate_limit_exceeded", message: "slow down", retryAfter: 45 });
@@ -134,6 +182,116 @@ assert.equal(rl.status, 429);
 
     await tagged.posts.create({ content: "Hi", channels: ["instagram"], tags: ["Question"] });
     assert.deepEqual(JSON.parse(last().body).tags, ["Question"]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+// ─── Limits and feature requests: method, path, query, body, outcome ─────────
+{
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  const limit = {
+    id: "tiktok.delete",
+    kind: "platform",
+    kind_label: "The platform does not allow it",
+    area: "posts",
+    platforms: ["tiktok"],
+    title: "Delete a TikTok video",
+    says: "TikTok's API cannot delete a video.",
+    instead: "Delete the video in the TikTok app.",
+    requestable: false,
+  };
+  const request = {
+    id: 412,
+    title: "Post to a topic of a Telegram group",
+    summary: "Post our daily update to the Announcements topic of our Telegram group.",
+    status: "open",
+    team_answer: null,
+    team_replies: [],
+    votes_count: 1,
+    limit_id: "telegram.forum_topics",
+    platform: "telegram",
+    area: "posts",
+    source: "api",
+    created_at: "2026-11-04T10:00:00.000Z",
+    updated_at: "2026-11-04T10:00:00.000Z",
+    completed_at: null,
+  };
+  const json = (status, body) =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  globalThis.fetch = async (url, init) => {
+    const call = { url: new URL(String(url)), method: init.method, body: init.body };
+    calls.push(call);
+    const body = init.body ? JSON.parse(init.body) : null;
+    if (call.url.pathname === "/v1/limits") {
+      return json(200, { data: [limit], kinds: { platform: "The platform does not allow it" } });
+    }
+    if (call.method === "POST" && body?.limit_id === "tiktok.delete") {
+      return json(409, {
+        error: { code: "not_requestable", message: "TikTok's API cannot delete a video. A request cannot change this, so nothing was sent.", limit },
+      });
+    }
+    if (call.method === "POST" && body?.summary?.startsWith("Again")) {
+      return json(200, { outcome: "already_requested", data: request });
+    }
+    if (call.method === "POST") return json(201, { outcome: "voted", data: request });
+    if (call.url.pathname === "/v1/feature-requests") return json(200, { data: [request] });
+    return json(200, { data: request });
+  };
+  try {
+    const fr = new OmniSocials({ apiKey: "omsk_live_smoke", maxRetries: 0 });
+    const last = () => calls[calls.length - 1];
+
+    const limits = await fr.limits.list({ platform: "tiktok", area: "posts" });
+    assert.equal(last().method, "GET");
+    assert.equal(last().url.pathname, "/v1/limits");
+    assert.equal(last().url.searchParams.get("platform"), "tiktok");
+    assert.equal(last().url.searchParams.get("area"), "posts");
+    assert.equal(limits.data[0].requestable, false);
+    assert.equal(limits.kinds.platform, "The platform does not allow it");
+
+    await fr.limits.list();
+    assert.equal(last().url.search, "", "limits.list() without params sends no query");
+
+    const voted = await fr.featureRequests.create({
+      summary: "Post our daily update to the Announcements topic of our Telegram group.",
+      platform: "telegram",
+      limit_id: "telegram.forum_topics",
+    });
+    assert.equal(last().method, "POST");
+    assert.equal(last().url.pathname, "/v1/feature-requests");
+    assert.deepEqual(JSON.parse(last().body), {
+      summary: "Post our daily update to the Announcements topic of our Telegram group.",
+      platform: "telegram",
+      limit_id: "telegram.forum_topics",
+    });
+    assert.equal("source" in JSON.parse(last().body), false, "the SDK never sets source");
+    assert.equal(voted.outcome, "voted");
+    assert.equal(voted.data.id, 412);
+
+    const again = await fr.featureRequests.create({ summary: "Again: post to a Telegram topic, please." });
+    assert.equal(again.outcome, "already_requested", "a 200 keeps the outcome");
+
+    await assert.rejects(
+      fr.featureRequests.create({ summary: "Delete my TikTok videos from OmniSocials.", limit_id: "tiktok.delete" }),
+      (err) => {
+        assert.ok(err instanceof APIError);
+        assert.equal(err.status, 409);
+        assert.equal(err.code, "not_requestable");
+        assert.equal(err.body.error.limit.instead, "Delete the video in the TikTok app.");
+        return true;
+      }
+    );
+
+    const mine = await fr.featureRequests.list();
+    assert.equal(last().method, "GET");
+    assert.equal(last().url.pathname, "/v1/feature-requests");
+    assert.equal(mine.data[0].status, "open");
+
+    const one = await fr.featureRequests.get(412);
+    assert.equal(last().url.pathname, "/v1/feature-requests/412");
+    assert.equal(one.data.limit_id, "telegram.forum_topics");
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -260,6 +418,6 @@ const cjsVerified = cjs.verifyWebhookSignature({
 assert.equal(cjsVerified.id, eventObject.id);
 
 console.log("All smoke tests passed.");
-console.log("- ESM import OK, client + 10 resources expose all inventory methods");
+console.log("- ESM import OK, client + 11 resources expose all inventory methods (ads money calls not retried)");
 console.log("- Webhook signature: accepts valid, rejects tampered/stale/wrong-secret/malformed");
 console.log("- CJS require() OK (dual build works)");

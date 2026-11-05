@@ -9,6 +9,8 @@ import { MediaResource } from "./resources/media.js";
 import { FoldersResource } from "./resources/folders.js";
 import { HashtagSetsResource } from "./resources/hashtag-sets.js";
 import { TagsResource } from "./resources/tags.js";
+import { LimitsResource } from "./resources/limits.js";
+import { FeatureRequestsResource } from "./resources/feature-requests.js";
 import { ApprovalWorkflowsResource } from "./resources/approval-workflows.js";
 import { AccountsResource } from "./resources/accounts.js";
 import { AnalyticsResource } from "./resources/analytics.js";
@@ -16,10 +18,11 @@ import { LocationsResource } from "./resources/locations.js";
 import { AudioResource } from "./resources/audio.js";
 import { PinterestResource } from "./resources/pinterest.js";
 import { AutomationsResource } from "./resources/automations.js";
+import { AdsResource } from "./resources/ads.js";
 import { WebhooksResource } from "./resources/webhooks.js";
 import { InboxResource } from "./resources/inbox.js";
 
-export const VERSION = "0.14.0";
+export const VERSION = "0.15.0";
 
 const DEFAULT_BASE_URL = "https://api.omnisocials.com/v1";
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -46,6 +49,11 @@ export interface RequestOptions {
   body?: unknown;
   /** Multipart form body (mutually exclusive with `body`). */
   formData?: FormData;
+  /**
+   * `"rate_limit"`: retry only a 429. A call that can start ad spend uses it:
+   * after a 5xx or a timeout the first attempt may have gone through.
+   */
+  retry?: "rate_limit";
 }
 
 function sleep(ms: number): Promise<void> {
@@ -83,8 +91,13 @@ export class OmniSocials {
   readonly audio: AudioResource;
   readonly pinterest: PinterestResource;
   readonly automations: AutomationsResource;
+  readonly ads: AdsResource;
   readonly webhooks: WebhooksResource;
   readonly inbox: InboxResource;
+  /** What OmniSocials cannot do, why, and what to do instead. */
+  readonly limits: LimitsResource;
+  /** Feature requests to the OmniSocials team, for the person who owns the key. */
+  readonly featureRequests: FeatureRequestsResource;
 
   constructor(options: OmniSocialsOptions = {}) {
     const apiKey =
@@ -119,8 +132,11 @@ export class OmniSocials {
     this.audio = new AudioResource(this);
     this.pinterest = new PinterestResource(this);
     this.automations = new AutomationsResource(this);
+    this.ads = new AdsResource(this);
     this.webhooks = new WebhooksResource(this);
     this.inbox = new InboxResource(this);
+    this.limits = new LimitsResource(this);
+    this.featureRequests = new FeatureRequestsResource(this);
   }
 
   /** `GET /health` (no scopes required). */
@@ -134,16 +150,20 @@ export class OmniSocials {
     return this.request<T>("GET", path, { query });
   }
 
-  post<T>(path: string, body?: unknown): Promise<T> {
-    return this.request<T>("POST", path, body === undefined ? {} : { body });
+  post<T>(path: string, body?: unknown, options: Pick<RequestOptions, "retry"> = {}): Promise<T> {
+    return this.request<T>("POST", path, body === undefined ? options : { ...options, body });
   }
 
   postForm<T>(path: string, formData: FormData): Promise<T> {
     return this.request<T>("POST", path, { formData });
   }
 
-  patch<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>("PATCH", path, { body });
+  patch<T>(path: string, body: unknown, options: Pick<RequestOptions, "retry"> = {}): Promise<T> {
+    return this.request<T>("PATCH", path, { ...options, body });
+  }
+
+  put<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>("PUT", path, { body });
   }
 
   delete<T>(path: string): Promise<T> {
@@ -184,8 +204,9 @@ export class OmniSocials {
       try {
         response = await this.fetchWithTimeout(url, { method, headers, body });
       } catch (err) {
-        // Network failure or timeout: retryable.
-        if (attempt < this.maxRetries) {
+        // Network failure or timeout: retryable, unless the call may have
+        // started ad spend.
+        if (options.retry !== "rate_limit" && attempt < this.maxRetries) {
           await sleep(this.backoffMs(attempt));
           attempt += 1;
           continue;
@@ -213,7 +234,8 @@ export class OmniSocials {
       }
 
       const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
-      const retryable = response.status === 429 || response.status >= 500;
+      const retryable =
+        response.status === 429 || (response.status >= 500 && options.retry !== "rate_limit");
       if (retryable && attempt < this.maxRetries) {
         await sleep(this.backoffMs(attempt, retryAfter));
         attempt += 1;

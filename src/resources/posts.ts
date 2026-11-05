@@ -18,12 +18,14 @@ import type {
 export class PostsResource {
   constructor(private readonly client: OmniSocials) {}
 
-  /** `GET /posts` - list posts in the workspace (newest first). */
+  /** `GET /posts` - list posts in the workspace (newest first); `start_date` / `end_date` narrow it to a period on `schedule_at`, in calendar order (earliest first); `tag` keeps the posts with any of the given tags. */
   list(params: ListPostsParams = {}): Promise<ListResponse<Post>> {
     return this.client.get("/posts", {
       status: params.status,
       limit: params.limit,
       offset: params.offset,
+      start_date: params.start_date,
+      end_date: params.end_date,
       tag: Array.isArray(params.tag) ? params.tag.join(",") : params.tag,
     });
   }

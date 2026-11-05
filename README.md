@@ -119,6 +119,8 @@ const { data: post } = await client.posts.create({
     actions: {
       dm: { text: "Here is the guide: https://example.com/guide" },
       public_reply: { enabled: true, variations: ["Sent you a DM!", "Check your inbox"] },
+      // Optional: send the link only to people who follow the account
+      follow_gate: { enabled: true },
     },
     limits: { max_sends: 500 },
   },
@@ -133,7 +135,22 @@ for (const event of events.data) {
 }
 ```
 
-The events response is `{ data, counts, pagination }`, not the plain list: `counts` is the number of events per outcome (`sent`, `skipped`, `failed`, `pending`, `queued`, `opted_out`). An automation can also listen on a post published outside OmniSocials (`client.automations.create({ instagram_media_id, ... })`), on the next post the workspace publishes (`trigger: { scope: "next_post" }`) or on every post (`scope: "any"`), and on DMs and story replies (`trigger: { kinds: ["dm", "story_reply"] }`).
+The events response is `{ data, counts, pagination }`, not the plain list: `counts` is the number of events per outcome (`sent`, `skipped`, `failed`, `pending`, `queued`, `opted_out`, `waiting`). An automation can also listen on a post published outside OmniSocials (`client.automations.create({ instagram_media_id, ... })`), on the next post the workspace publishes (`trigger: { scope: "next_post" }`) or on every post (`scope: "any"`), and on DMs and story replies (`trigger: { kinds: ["dm", "story_reply"] }`).
+
+Follow first (`actions.follow_gate`, Instagram only) sends the link only to people who follow the account. On a comment the private reply is a first message with one button ("Send me the link"); a tap makes OmniSocials ask Instagram whether the person follows. A follower gets `actions.dm.text`, anyone else gets the `not_following` message with its button ("I follow now"), and every later tap checks again. A DM or a story reply is checked at once. When Instagram gives no answer the link goes out anyway. Texts hold 640 characters, buttons 20; leave them out for the defaults. A person who has not followed yet is an event with outcome `waiting` and `event.follow_gate` (`state`, `taps`, `followed`, `checked`, `after_ask`); `automation.stats.followed` counts the people who followed after the ask. `enabled: true` on a Facebook or X automation is a `400 follow_gate_instagram_only`.
+
+```ts
+await client.automations.update(automationId, {
+  actions: {
+    dm: { text: "Here is the guide: https://example.com/guide" },
+    follow_gate: {
+      enabled: true,
+      first_message: { text: "Tap the button and I'll send you the link 👇", button: "Send me the link" },
+      not_following: { text: "Almost there! Follow @yourbrand first, then tap the button again.", button: "I follow now" },
+    },
+  },
+});
+```
 
 A Facebook Page works the same way, and the DM lands in Messenger: pass `platform: "facebook"` to `client.automations.create()`, or `facebook_post_id` for a Page post published outside OmniSocials. On a post, `comment_dm_automation: { platforms: ["instagram", "facebook"], ... }` makes one automation per channel with the same keywords and DM. Facebook has no story replies.
 
@@ -602,9 +619,66 @@ if (list.error) {
 
 Without `source` the list reads the Pinterest catalog (with `price`, `currency`, `availability` and `item_id`) when the connection has catalog access, else the account's own Pins. Catalog access is given one time in the OmniSocials composer: Pinterest options, Add products, Connect catalog. `source: "pins"` scans up to 250 Pins per call, so `products` can be empty while `bookmark` is set; call again with `{ bookmark: list.bookmark }`. To check one Pin id or Pin link before you post, call `client.pinterest.validateProduct("813744226420795884")`. On `posts.update()` the `pinterest` object replaces the stored one, so leave `product_tags` out to remove the tags.
 
+## Ads
+
+Boost a published post or create a new ad on Meta, Pinterest, TikTok, LinkedIn, X and Google. Ads spend real money, so every call that starts or raises spend asks for the amount again: `ads.activate()`, `ads.activateMulti()`, `ads.drafts.launch()` and a budget raise through `ads.update()`. Show the person the amount first and pass it only after they agree. These calls are not retried after a 5xx or a timeout, because the first attempt may have started the ad: read the campaign or the draft to see what happened.
+
+The `ads:read` and `ads:write` scopes are opt-in: create the API key with **Ads** switched on (Settings, API). A key without them gets `403 insufficient_scope`. Ad accounts are connected and picked in the OmniSocials dashboard. Budgets are in major units (10 = 10 EUR) in the ad account's currency.
+
+### Create an ad (draft, then launch)
+
+```ts
+const caps = await client.ads.capabilities();
+console.log(caps.data.create_networks, caps.data.network_states);
+
+const { data: draft } = await client.ads.drafts.create({
+  name: "Autumn sale",
+  objective: "traffic",
+  platforms: ["meta", "linkedin"],
+  budget: { amount: 10, currency: "EUR" },
+  schedule: { duration_days: 7 },
+  targeting: { countries: ["NL", "BE"], automatic_audience: true },
+  ads: [
+    {
+      media: [{ url: "https://example.com/sale.jpg", type: "image", width: 1080, height: 1350 }],
+      primary_text: "30% off everything this week",
+      headline: "Autumn sale",
+      cta: "shop_now",
+      link: "https://example.com/sale",
+    },
+  ],
+});
+
+// A draft spends nothing. Hand draft.review_url to the person, or start it
+// after they confirmed 10 EUR a day per network:
+const { data: launch } = await client.ads.drafts.launch(draft.group_id, { confirm_budget_amount: 10 });
+for (const r of launch.results) console.log(r.platform, r.ok ? "started" : r.error);
+```
+
+A draft needs no ad account; `client.ads.drafts.attachAccount(groupId, { platform, ad_account_id })` sets one, and `campaigns[].readiness` says what still stops a network. On Meta an ad can carry a second upright 9:16 file for Stories and Reels: `placement_media: { stories_reels: { url, type } }`.
+
+### Boost a post
+
+```ts
+const { data: accounts } = await client.ads.listAccounts();
+const meta = accounts.find((a) => a.platform === "meta" && a.is_selected);
+
+const { data: boost } = await client.ads.boost({
+  post_id: 12345,
+  ad_account_id: meta!.id,
+  budget: { type: "daily", amount: 5, currency: meta!.account_info?.currency ?? "EUR" },
+  targeting: { countries: ["NL"] },
+});
+
+// The boost is a draft. Start it only after the person confirmed 5 a day:
+await client.ads.activate(boost.id, 5);
+```
+
+`client.ads.boostMulti()` makes one draft boost per ad account (up to 10, the same budget each). `client.ads.suggestions()` lists posts that do better than your median, `client.ads.overview()` the totals, and `client.ads.list()`, `get()`, `pause()`, `resume()` and `delete()` manage campaigns. Keyword ideas through the connected Google Ads account: `client.ads.researchKeywords({ keywords: ["running shoes"], country: "NL" })` and `client.ads.keywordMetrics({ keywords: [...] })`.
+
 ## Webhooks
 
-Events: `post.scheduled`, `post.published`, `post.failed`, `post.approved` (the last step of a post's approval workflow is approved) and `post.rejected` (an approver rejects the post; it will not publish). The two approval events carry `data.approval` with `status`, `decided_by` (the approver's user id) and `reason` (`null` on `post.approved`), and an empty `data.targets`.
+Events: `post.scheduled`, `post.published`, `post.failed`, `post.approved` (the last step of a post's approval workflow is approved) and `post.rejected` (an approver rejects the post; it will not publish). The two approval events carry `data.approval` with `status`, `decided_by` (the approver's user id) and `reason` (`null` on `post.approved`), and an empty `data.targets`. `ad.status_changed` fires when an ad campaign changes status (for example `pending_review` to `active` or `rejected`); its `data` is the campaign, typed as `AdStatusChangedEventData` (`campaign_id`, `name`, `platform`, `campaign_type`, `status`, `previous_status`, `external_campaign_id`, `budget`).
 
 ### Manage endpoints
 
@@ -696,8 +770,9 @@ await client.inbox.hide(messages[0].id);
 const { data: liked } = await client.inbox.like(messages[0].id);
 console.log(liked.liked); // true
 
-// Delete a comment outright (Facebook, Instagram, TikTok; YouTube: hide instead).
-// Replies under it go with it; their ids come back as removed_reply_ids.
+// Delete a comment outright, or one of your own replies (Facebook, Instagram,
+// TikTok; YouTube: hide instead). Replies under it go with it; their ids come
+// back as removed_reply_ids.
 await client.inbox.deleteMessage(messages[0].id);
 ```
 
@@ -746,6 +821,42 @@ try {
   }
 }
 ```
+
+## Limits and feature requests
+
+`client.limits.list()` lists what OmniSocials cannot do, why (`says`) and what to do instead (`instead`): platform rules, features not built yet, features that work in the OmniSocials app only. Read it before you tell a person that something is not possible. When the person still wants a `requestable` entry, send a feature request with its `limit_id`. The request is stored for the person who owns the key; they see it in OmniSocials (Settings, Request a feature) and get an email when its status changes. Works with every key, no scope needed.
+
+```ts
+import { APIError, type Limit } from "@omnisocials/sdk";
+
+const { data: limits } = await client.limits.list({ platform: "telegram" }); // area: "posts" | "inbox" | ...
+const topics = limits.find((l) => l.id === "telegram.forum_topics");
+console.log(topics?.says, topics?.instead, topics?.requestable);
+
+try {
+  const { outcome, data: request } = await client.featureRequests.create({
+    summary: "Post our daily update to the Announcements topic of our Telegram group, not to the whole group.",
+    platform: "telegram",
+    limit_id: "telegram.forum_topics",
+  });
+  // outcome: "created" (new), "voted" (added a vote to your organisation's open request)
+  // or "already_requested" (you asked before; request is that one)
+  console.log(outcome, request.id, request.status);
+} catch (err) {
+  if (err instanceof APIError && err.code === "not_requestable") {
+    // A platform rule or a choice of OmniSocials: nothing was stored.
+    const { limit } = (err.body as { error: { limit: Limit } }).error;
+    console.log(limit.says, limit.instead);
+  } else {
+    throw err;
+  }
+}
+
+const { data: mine } = await client.featureRequests.list(); // newest first, at most 50
+const { data: one } = await client.featureRequests.get(mine[0].id); // status, team_answer, team_replies
+```
+
+A `Limit` is `{ id, kind, kind_label, area, platforms, title, says, instead, requestable }`; `kind` is `platform`, `by_design`, `not_built`, `beta`, `dashboard_only` or `needs_setup`, and `requestable` is false for `platform` and `by_design`. `limits.list()` also returns `kinds` (a label per kind). A `FeatureRequest` carries `status` (`open`, `in_progress`, `completed`, `declined`), `votes_count`, `team_answer` and `team_replies`. `summary` is 10 to 1000 characters (what the person wants to do and why), `title` at most 120 (made from the summary when left out). Errors: `400 invalid_summary` / `invalid_title` / `invalid_platform` / `invalid_area` / `unknown_limit`, `409 not_requestable` (the entry is in `err.body.error.limit`), `429 too_many_requests` (10 an hour per person), and `400 invalid_id` / `404 not_found` on `get`.
 
 ## Health
 
