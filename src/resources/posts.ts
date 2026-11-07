@@ -1,5 +1,6 @@
 import type { OmniSocials } from "../client.js";
 import type {
+  ApprovePostParams,
   CreatePostParams,
   CreatePostResponse,
   ItemResponse,
@@ -11,6 +12,7 @@ import type {
   PostRejectResult,
   PostRetryResult,
   RecentPlatformPostsParams,
+  RejectPostParams,
   UpdatePostParams,
   UpdatePostResponse,
 } from "../types.js";
@@ -77,6 +79,12 @@ export class PostsResource {
    * then carries `data.comment_dm_automation` with `platforms` and
    * `automations`, and each automation starts listening once the post is
    * live on its channel.
+   *
+   * A media id that is still processing (a large video is checked and
+   * converted after upload) answers `409 media_processing` and nothing is
+   * created: wait until `media.get(id)` says `ready`, then send the same
+   * request again. A file whose processing failed answers
+   * `400 invalid_media`: upload it again.
    */
   create(params: CreatePostParams): Promise<CreatePostResponse> {
     return this.client.post("/posts/create", params);
@@ -84,8 +92,9 @@ export class PostsResource {
 
   /**
    * `POST /posts/create-and-publish` - create a post and publish it
-   * immediately. See {@link create} for the `warnings` array and the
-   * `402 x_credits_insufficient` schedule-time gate on X link posts.
+   * immediately. See {@link create} for the `warnings` array, the
+   * `402 x_credits_insufficient` schedule-time gate on X link posts and the
+   * `409 media_processing` / `400 invalid_media` answers.
    */
   createAndPublish(
     params: Omit<CreatePostParams, "scheduled_at">
@@ -102,17 +111,38 @@ export class PostsResource {
    * automations (a channel no longer in `platforms` loses its automation),
    * `null` removes them all, omitted leaves them (needs the
    * `automations:write` scope).
+   *
+   * `409` answers, where nothing is changed: `post_publishing` while the
+   * post is publishing (status `posting`) or a retry publishes one of its
+   * channels (poll {@link get} until `published`, `warning` or `failed`; an
+   * update with only `tags` still works); `review_required` when changes
+   * were requested on the post (`approval_status` `rejected`) and the
+   * update would schedule it (it needs a new review: create it again with
+   * `approval_workflow_id`; saving it as a draft works); `media_processing`
+   * as on {@link create}.
    */
   update(id: string, params: UpdatePostParams): Promise<UpdatePostResponse> {
     return this.client.patch(`/posts/${encodeURIComponent(id)}`, params);
   }
 
-  /** `DELETE /posts/:id` - remove a post from OmniSocials (the live post stays on the platform). Resolves to `null` (204). */
+  /**
+   * `DELETE /posts/:id` - remove a post from OmniSocials (the live post
+   * stays on the platform). Resolves to `null` (204). While the post is
+   * publishing (status `posting`) or a retry publishes one of its channels,
+   * the answer is `409 post_publishing` and nothing is deleted: poll
+   * {@link get} until `published`, `warning` or `failed`, then delete it.
+   */
   delete(id: string): Promise<null> {
     return this.client.delete(`/posts/${encodeURIComponent(id)}`);
   }
 
-  /** `POST /posts/:id/publish` - publish a draft or scheduled post now. */
+  /**
+   * `POST /posts/:id/publish` - publish a draft or scheduled post now. A
+   * post on which changes were requested in its approval workflow
+   * (`approval_status` `rejected`) answers `409 review_required`: it
+   * publishes only after a new review (create it again with
+   * `approval_workflow_id`).
+   */
   publish(id: string): Promise<ItemResponse<Post>> {
     return this.client.post(`/posts/${encodeURIComponent(id)}/publish`);
   }
@@ -122,7 +152,10 @@ export class PostsResource {
    * `warning` (partially failed) post, on the same post. Only the platforms
    * that failed are re-published; platforms that already succeeded are never
    * posted again. Asynchronous: a 200 means the retry is queued - poll
-   * `get()` for the outcome. Max 3 retries per platform.
+   * `get()` for the outcome. Max 3 retries per platform. While another
+   * retry runs (a second request, the dashboard, the automatic retry) the
+   * answer is `409 retry_in_progress` and nothing is queued: poll `get()`
+   * and retry once the post is `failed` or `warning` again.
    */
   retry(id: string): Promise<ItemResponse<PostRetryResult>> {
     return this.client.post(`/posts/${encodeURIComponent(id)}/retry`);
@@ -131,29 +164,57 @@ export class PostsResource {
   /**
    * `POST /posts/:id/approve` - approve the current step of a post's
    * approval workflow, on behalf of the user who owns this API key. That
-   * user must be a listed approver for the workflow's CURRENT step - steps
+   * user must be a listed approver for the workflow's CURRENT step: steps
    * approve in order, so an approver on a later step gets a `forbidden`
    * error until earlier steps clear. Only works on a post with
    * `approval_status: "pending"`. Approving the last step finalizes the
    * post immediately (`scheduled` or `posting`); otherwise it stays
    * `in_approval` and the next step's approvers are notified.
+   *
+   * Pass `step_order`: the `current_step` of {@link getApproval}, the step
+   * you reviewed. When the review is on another step now (somebody decided
+   * since you read it, or a retried call already went through), nothing is
+   * approved and the call throws a `409` `APIError` with code
+   * `step_changed`; `err.body.error.current_step_order` is the step the
+   * review is on now. Read the approval again before you decide. Without
+   * `step_order` the call approves whatever step is current, so a retry
+   * after a timeout can approve the next step too.
    */
-  approve(id: string): Promise<ItemResponse<PostApproveResult>> {
-    return this.client.post(`/posts/${encodeURIComponent(id)}/approve`);
+  approve(
+    id: string,
+    params: ApprovePostParams = {}
+  ): Promise<ItemResponse<PostApproveResult>> {
+    const body =
+      params.step_order !== undefined ? { step_order: params.step_order } : undefined;
+    return this.client.post(`/posts/${encodeURIComponent(id)}/approve`, body);
   }
 
   /**
    * `POST /posts/:id/reject` - reject a post's approval workflow, on behalf
    * of the user who owns this API key. Same approver requirement as
    * {@link approve}. Unlike approval, a rejection stops the WHOLE workflow
-   * immediately (not just the current step) - the post's status becomes
-   * `rejected`. `comment` is optional and, when given, is shown to the
-   * requester and other approvers in the post's review thread.
+   * immediately (not just the current step): the post's status becomes
+   * `rejected`. `comment` is optional (max 2000 characters) and, when
+   * given, is shown to the requester and other approvers in the post's
+   * review thread. Pass the comment as a string, or `{ comment, step_order }`.
+   *
+   * `step_order` works as on {@link approve}: the `current_step` of
+   * {@link getApproval}. When the review moved on, nothing is rejected and
+   * the call throws a `409` `step_changed` `APIError` with
+   * `err.body.error.current_step_order`.
    */
-  reject(id: string, comment?: string): Promise<ItemResponse<PostRejectResult>> {
+  reject(
+    id: string,
+    params?: string | RejectPostParams
+  ): Promise<ItemResponse<PostRejectResult>> {
+    const { comment, step_order } =
+      typeof params === "string" ? { comment: params, step_order: undefined } : params ?? {};
+    const body: { comment?: string; step_order?: number } = {};
+    if (comment) body.comment = comment;
+    if (step_order !== undefined) body.step_order = step_order;
     return this.client.post(
       `/posts/${encodeURIComponent(id)}/reject`,
-      comment ? { comment } : undefined
+      Object.keys(body).length > 0 ? body : undefined
     );
   }
 

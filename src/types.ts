@@ -8,6 +8,13 @@
  */
 
 import type { Tag, TagRef, TrialReel } from "./tag-types.js";
+import type {
+  AdCapabilitiesParity,
+  AdNetworkAdFields,
+  AdNetworkSettings,
+  AdNetworkTargeting,
+  AdsWebhookEventType,
+} from "./ads-parity-types.js";
 
 // ─── Envelope ────────────────────────────────────────────────────────────────
 
@@ -823,6 +830,26 @@ export interface PostRetryResult {
   message: string;
 }
 
+/** Options of `posts.approve()` (`POST /posts/:id/approve`). */
+export interface ApprovePostParams {
+  /**
+   * The workflow step you reviewed: `current_step` of `posts.getApproval()`.
+   * When the review is on another step now, nothing is approved and the
+   * answer is `409 step_changed` with `error.current_step_order`. A whole
+   * number from 1, else `400 validation_error`. Left out, the call acts on
+   * whatever step is current.
+   */
+  step_order?: number;
+}
+
+/** Options of `posts.reject()` (`POST /posts/:id/reject`). */
+export interface RejectPostParams {
+  /** Reason shown in the post's review thread (max 2000 characters). */
+  comment?: string;
+  /** The workflow step you reviewed, as on {@link ApprovePostParams}. */
+  step_order?: number;
+}
+
 /** `data` payload of `POST /posts/:id/approve`. */
 export interface PostApproveResult {
   id: string;
@@ -1238,11 +1265,22 @@ export interface Account {
   content_types: string[];
   /**
    * "active" while the OAuth token is healthy. Flips to "needs_reconnect"
-   * when the platform has revoked/expired the token; posts to this account
-   * will fail until the user reconnects.
+   * when the platform has revoked/expired the token (Bluesky: the sign-in
+   * could not be renewed); posts to this account will fail until the user
+   * reconnects. "pick_pending" (Facebook, OmniSocials Connect customers
+   * only): the Facebook login manages several Pages and none is chosen yet;
+   * posts fail until the Page is chosen by connecting Facebook again and
+   * picking the Page.
    */
-  status: "active" | "needs_reconnect" | string;
+  status: "active" | "needs_reconnect" | "pick_pending" | string;
   needs_reconnect: boolean;
+  /**
+   * `true` when `status` is "pick_pending" (Facebook, OmniSocials Connect
+   * customers only). Such an account
+   * cannot be posted to, and `username`, `display_name` and
+   * `profile_picture` name the person who signed in, not a Page.
+   */
+  pick_pending?: boolean;
   /** Short reason from the platform; only present when needs_reconnect is true. */
   reauth_reason?: string | null;
   connected_at: string | null;
@@ -2106,13 +2144,20 @@ export interface PostCommentDmAutomation extends Automation {
 
 // ─── Ads ─────────────────────────────────────────────────────────────────────
 //
-// Ads spend real money once a campaign starts. Boosts, campaigns and drafts
-// are created as drafts (no spend); `ads.activate()`, `ads.activateMulti()`,
-// `ads.drafts.launch()` and a budget raise through `ads.update()` start or
-// raise spend, and each needs the amount again as a confirmation. Budgets are
-// in MAJOR currency units (10 = €10) in the ad account's currency. Ad
-// accounts are connected and picked in the OmniSocials dashboard. The scopes
-// `ads:read` / `ads:write` are opt-in on the API key (the "Ads" switch).
+// Ads spend real money once a campaign starts. Boosts and drafts are created
+// as drafts (no spend). Starting or raising spend needs a key with the opt-in
+// `ads:spend` scope ("Start ads", a second switch under "Ads"; its creator
+// needs `manage_ads`): `ads.activate()`, `ads.activateMulti()`,
+// `ads.resume()`, `ads.drafts.launch()`, a budget raise or any change of a
+// campaign that reached the network through `ads.update()`, and the parity
+// calls that switch something on or raise a budget. Each repeats the amount.
+// Without `ads:spend` these calls answer `403 start_in_app` with the page in
+// the app where a person does it; on Google (`api_draft_only`) they always
+// do, also with `ads:spend`. Pause and delete stay open, except on the
+// networks in `api_stop_in_app` (Google). Budgets are in MAJOR
+// currency units (10 = €10) in the ad account's currency. Ad accounts are
+// connected and picked in the OmniSocials dashboard. The scopes `ads:read` /
+// `ads:write` are opt-in on the API key (the "Ads" switch).
 // Ad account and campaign ids are 64-bit and arrive as JSON strings; every
 // method and body takes them as a string or a number.
 
@@ -2177,7 +2222,11 @@ export type AdObjective =
   | "awareness"
   | "video_views"
   | "lead_generation"
-  | "conversions";
+  | "conversions"
+  /** API only (Meta): a chat in Messenger, Instagram Direct or WhatsApp (`settings.messaging`). */
+  | "messages"
+  /** API only (Meta): the button calls `settings.calls.phone_number`. */
+  | "calls";
 
 export type AdCampaignStatus =
   | "draft"
@@ -2194,11 +2243,16 @@ export interface AdCampaign {
   platform: AdPlatform;
   campaign_type: "campaign" | "boost";
   objective?: AdObjective | string;
-  /** Created as `draft`; spends only after activation. `pending_review` = in the network's ad review. */
+  /** Created as `draft`; spends only once a person starts it in the app. `pending_review` = in the network's ad review. */
   status: AdCampaignStatus;
   budget: AdBudget;
-  /** Unified targeting (`countries`, ages, genders...). `raw_targeting` passes a native spec through. */
-  targeting?: Record<string, unknown>;
+  /**
+   * Unified targeting (`countries`, ages, genders...) plus `network`, the
+   * network's own targeting. `raw_targeting` passes a native spec through.
+   */
+  targeting?: AdCampaignTargeting;
+  /** The network settings (bidding, conversion goal, lead form, messaging). */
+  settings?: AdNetworkSettings;
   schedule?: AdSchedule;
   /** Latest synced numbers: spend (major units), impressions, clicks, ctr. */
   metrics?: Record<string, number | string>;
@@ -2212,6 +2266,17 @@ export interface AdCampaign {
   /** Campaign rows use camelCase timestamps (`createdAt`), unlike ad accounts. */
   createdAt: string;
   updatedAt?: string;
+  [key: string]: unknown;
+}
+
+/** The targeting of a campaign: the shared fields plus `network` (this network's own). */
+export interface AdCampaignTargeting {
+  countries?: string[];
+  age_min?: number;
+  age_max?: number;
+  genders?: ("male" | "female")[];
+  /** Ids from `ads.targeting.search()` of this network; `include.location` replaces `countries`. */
+  network?: AdNetworkTargeting;
   [key: string]: unknown;
 }
 
@@ -2291,21 +2356,21 @@ export interface AdMultiResponse<T> {
   [key: string]: unknown;
 }
 
-export interface CreateAdCampaignParams {
-  ad_account_id: number | string;
-  name: string;
-  budget: AdBudget;
-  objective?: AdObjective;
-  targeting?: Record<string, unknown>;
-  schedule?: AdSchedule;
-}
-
+/**
+ * Body of `ads.update()`. A draft changes with `ads:write`. A campaign that
+ * reached the network changes only with a key that has `ads:spend` (never on
+ * Google); without it the call answers `403 start_in_app`.
+ */
 export interface UpdateAdCampaignParams {
   name?: string;
+  objective?: AdObjective;
   budget?: AdBudget;
-  /** Required to RAISE the budget of a running campaign: the new amount again. */
+  /** Required to RAISE the budget of a running campaign (a key with `ads:spend`, outside `api_draft_only`): the new amount again. */
   confirm_budget_amount?: number;
-  targeting?: Record<string, unknown>;
+  /** `network` (this network's own targeting) may change after the start too. */
+  targeting?: AdCampaignTargeting;
+  /** Only while the campaign is a draft (`400 settings_locked` after the start: duplicate it). */
+  settings?: AdNetworkSettings;
   schedule?: AdSchedule;
 }
 
@@ -2325,11 +2390,29 @@ export interface BoostSuggestion {
   [key: string]: unknown;
 }
 
+/** One currency's totals in `ads.overview()`. */
+export interface AdsCurrencyTotals {
+  /** 3-letter ISO code, or `null` for campaigns without a currency. */
+  currency: string | null;
+  spend: number;
+  impressions: number;
+  clicks: number;
+}
+
 export interface AdsOverview {
   connected_accounts: number;
   campaigns_total: number;
   campaigns_by_status: Record<string, number>;
-  totals: { spend: number; impressions: number; clicks: number };
+  totals: {
+    /** `null` when the campaigns use more than one currency: read `totals_by_currency`. */
+    spend: number | null;
+    /** The one currency of `spend`, or `null` when there are several (or none). */
+    currency: string | null;
+    impressions: number;
+    clicks: number;
+  };
+  /** Spend, impressions and clicks per currency (amounts in different currencies are never added together). */
+  totals_by_currency: AdsCurrencyTotals[];
   [key: string]: unknown;
 }
 
@@ -2404,7 +2487,20 @@ export interface AdCapabilities {
     label: string;
     runs_on: string;
     identity: string;
-    goals: Record<string, { ok: boolean | "approx"; note?: string; reason?: string; needsVideo?: boolean }>;
+    goals: Record<
+      string,
+      {
+        ok: boolean | "approx";
+        note?: string;
+        reason?: string;
+        needsVideo?: boolean;
+        /** A goal through the API and MCP only (`api_goals`). */
+        apiOnly?: boolean;
+        /** What the goal needs: `lead_form`, `conversion`, `messaging`, `phone_number`. */
+        needs?: string[];
+        [key: string]: unknown;
+      }
+    >;
     media: Record<string, unknown>;
     text: Record<string, { max: number; shown: number; required: boolean; field?: boolean; noEmoji?: boolean }>;
     ctas: string[];
@@ -2412,6 +2508,12 @@ export interface AdCapabilities {
     extra_fields: string[];
     min_daily_budget: { default: number; byCurrency?: Record<string, number> };
     review: string;
+    /** The bid strategies `settings.optimization.bidding.strategy` takes on this network. */
+    bid_strategies?: string[];
+    /** The keys of `settings` this network reads, with a short note each. */
+    settings?: Record<string, string>;
+    /** The keys of `ads[].network.<network>` this network reads, with a short note each. */
+    ad_fields?: Record<string, string>;
     [key: string]: unknown;
   }[];
   goals: string[];
@@ -2419,8 +2521,17 @@ export interface AdCapabilities {
   /** The networks open to your organisation for new ads. */
   create_networks: AdPlatform[];
   network_states?: Record<string, AdNetworkState>;
-  /** Networks where the API and MCP stop at the draft: a person starts and changes those ads in the app. */
+  /** Networks where every API caller stops at the draft, also a key with `ads:spend` (Google): a person starts and changes those ads in the app. The MCP stops at the draft on every network. */
   api_draft_only?: string[];
+  /** Per network, the features its API offers (a missing one answers `400 not_supported_on_network`). */
+  features?: AdCapabilitiesParity["features"];
+  feature_labels?: AdCapabilitiesParity["feature_labels"];
+  /** Per network, the targeting types of `ads.targeting.search()`. */
+  targeting_types?: AdCapabilitiesParity["targeting_types"];
+  /** Goals through the API and MCP only: `lead_generation`, `conversions`, `messages`, `calls`. */
+  api_goals?: AdCapabilitiesParity["api_goals"];
+  /** Networks where the API may not even pause or delete a campaign that reached the network (Google). */
+  api_stop_in_app?: string[];
   [key: string]: unknown;
 }
 
@@ -2467,9 +2578,14 @@ export interface AdDraftAd {
   link: string;
   /** Per network text that replaces the shared text. */
   overrides?: Record<string, { primary_text?: string; headline?: string }>;
-  network?: {
-    google?: { business_name?: string; logo?: { url: string; width?: number; height?: number } };
-  };
+  /**
+   * Per network extras: Meta `lead_form_id`, `primary_texts`, `headlines`,
+   * `creative_features`, `media_ref`, `partnership`; TikTok
+   * `spark_auth_code`, `lead_form_id`, `media_ref`; LinkedIn and Pinterest
+   * `lead_form_id`; X `media_ref`; Google `business_name`, `logo`,
+   * `responsive_search_ad`.
+   */
+  network?: AdNetworkAdFields;
   /**
    * Meta only, optional: a second picture or video for Stories and Reels,
    * upright 9:16 (1080 x 1920), the same kind as `media`. Without it Meta
@@ -2501,14 +2617,33 @@ export interface AdDraftTargeting {
    * Singapore always need one).
    */
   regional_identities?: Record<string, { beneficiary: string; payer?: string }>;
+  /**
+   * Per network targeting (interests, places, job titles, custom audiences)
+   * with ids from `ads.targeting.search()` of that network. A save without
+   * `networks` keeps each network's own.
+   */
+  networks?: Partial<Record<AdPlatform, AdNetworkTargeting>>;
 }
 
 /** Body of `ads.drafts.create()` and `ads.drafts.update()` (the full draft). */
 export interface AdDraftParams {
   name?: string;
-  objective: "traffic" | "engagement" | "awareness" | "video_views";
-  /** Network keys, or `{ platform, budget_amount?, ad_account_id? }` per network. */
-  platforms: (AdPlatform | { platform: AdPlatform; budget_amount?: number; ad_account_id?: number | string })[];
+  /**
+   * `lead_generation`, `conversions`, `messages` and `calls` are API only:
+   * each network's goal in `ads.capabilities()` says what it `needs`.
+   */
+  objective: "traffic" | "engagement" | "awareness" | "video_views" | "lead_generation" | "conversions" | "messages" | "calls";
+  /** Network keys, or `{ platform, budget_amount?, ad_account_id?, settings? }` per network. */
+  platforms: (
+    | AdPlatform
+    | {
+        platform: AdPlatform;
+        budget_amount?: number;
+        ad_account_id?: number | string;
+        /** The network settings (bidding, conversion goal, lead form, messaging). */
+        settings?: AdNetworkSettings;
+      }
+  )[];
   /** The daily amount per network, in major units. */
   budget: { amount: number; currency: string };
   /** `duration_days: null` = runs until it is stopped. */
@@ -2539,6 +2674,8 @@ export interface AdDraftCampaign {
     needs_reauth: boolean;
   } | null;
   errors: string | null;
+  /** The network settings of this campaign. */
+  settings?: AdNetworkSettings;
   readiness: {
     ready: boolean;
     issues: AdDraftIssue[];
@@ -2559,7 +2696,7 @@ export interface AdDraft {
   targeting: AdDraftTargeting;
   ads: AdDraftAd[];
   campaigns: AdDraftCampaign[];
-  /** The builder in the dashboard, where a person can check and start the ad. */
+  /** The builder in the dashboard, where a person checks and starts the ad: hand it over. */
   review_url: string;
   currency_changed?: { platform: string; from: string; to: string } | null;
   [key: string]: unknown;
@@ -2574,7 +2711,9 @@ export interface AttachAdDraftAccountParams {
  * `ads.drafts.launch()`: give `confirm_budget_amount` (one daily amount for
  * every network) or `confirm_budget_amounts` (per campaign ID). Each must
  * equal that campaign's daily amount, else `400 budget_confirmation_required`
- * and nothing is written.
+ * and nothing is written. Needs a key with `ads:spend`: without it the call
+ * answers `403 start_in_app` with the draft's page. A network in
+ * `api_draft_only` (Google) is skipped with code `start_in_app`.
  */
 export interface LaunchAdDraftParams {
   confirm_budget_amount?: number;
@@ -2583,6 +2722,7 @@ export interface LaunchAdDraftParams {
 
 export interface LaunchAdDraftResult {
   group: AdDraft;
+  /** Per network. `campaign_id` is a string (64-bit ids); `code` `start_in_app` = the person starts it in the app. */
   results: { campaign_id: AdId; platform: AdPlatform; ok: boolean; code?: string; error?: string }[];
 }
 
@@ -2594,15 +2734,33 @@ export type WebhookEventType =
   | "post.failed"
   | "post.approved"
   | "post.rejected"
-  | "ad.status_changed";
+  | "ad.status_changed"
+  | AdsWebhookEventType;
 
 export interface Webhook {
   id: string;
   url: string;
   events: string[];
+  /**
+   * The workspace whose events the webhook receives. `null` for an
+   * organisation-wide webhook (made in the OmniSocials dashboard), which
+   * receives the events of every workspace of the organisation. Webhooks
+   * created through the API belong to the key's workspace.
+   */
+  workspace_id: number | null;
+  /**
+   * `false` when switched off: by a PATCH, or automatically when the person
+   * behind the webhook lost access to its organisation or workspace. An
+   * automatic switch-off says why in `last_failure.error`.
+   * `update(id, { is_active: true })` switches it on again.
+   */
   is_active: boolean;
   last_triggered_at: string | null;
   failure_count: number;
+  /**
+   * The last failed delivery. After an automatic switch-off: `status` is
+   * `null`, `error` says why and `attempts` is 0.
+   */
   last_failure: {
     at: string;
     status: number | null;
@@ -2618,7 +2776,13 @@ export interface Webhook {
 export interface CreateWebhookParams {
   /** HTTPS endpoint that will receive event deliveries. */
   url: string;
-  /** Events to subscribe to: post.scheduled, post.published, post.failed, post.approved, post.rejected. */
+  /**
+   * Events to subscribe to: post.scheduled, post.published, post.failed,
+   * post.approved, post.rejected; for ads ad.status_changed, ad.created,
+   * ad.updated, ad.review, ad.delivery_issue, campaign.created,
+   * campaign.updated, campaign.budget, lead.received, ads.sync_failed,
+   * ads.sync_recovered, ads.initial_sync_completed, ad_rule.triggered.
+   */
   events: string[];
 }
 
@@ -2664,6 +2828,8 @@ export interface WebhookEventApproval {
  * `data` of an `ad.status_changed` delivery: the campaign, not a post. It
  * fires when a campaign changes status, for example `pending_review` to
  * `active` (the network's review passed and spend started) or to `rejected`.
+ * Subscribing to it needs the `ads:read` scope on the key and `access_ads`
+ * for its person (else `403 insufficient_scope` / `insufficient_permission`).
  * Narrow on `event.type === "ad.status_changed"`, then read
  * `event.data as unknown as AdStatusChangedEventData`.
  */
@@ -2684,7 +2850,12 @@ export interface WebhookEvent {
   id: string;
   type: WebhookEventType | (string & {});
   created_at: string;
-  /** A post event's data. For `ad.status_changed` see {@link AdStatusChangedEventData}. */
+  /**
+   * A post event's data. For `ad.status_changed` see
+   * {@link AdStatusChangedEventData}. The other ads events carry the
+   * campaign (plus `details`) or their own data (a lead, a rule run, an ad
+   * account), never a post.
+   */
   data: {
     post_id: string | number;
     workspace_id: string | number | null;

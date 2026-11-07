@@ -10,7 +10,12 @@ export interface VerifyWebhookSignatureParams {
    * and re-serialize it first: the signature is computed over the raw bytes.
    */
   payload: string | Uint8Array;
-  /** Value of the `X-OmniSocials-Signature` header: `t=<unix>,v1=<hex>`. */
+  /**
+   * Value of the `X-OmniSocials-Signature` header: `t=<unix>,v1=<hex>`. For
+   * 24 hours after a secret rotation, pass the
+   * `X-OmniSocials-Signature-Previous` value here with the old secret when
+   * the new one does not match.
+   */
   signature: string;
   /** The webhook's signing secret (shown once on create / rotate-secret). */
   secret: string;
@@ -24,6 +29,14 @@ export interface VerifyWebhookSignatureParams {
  * The signed value is `"{timestamp}.{rawBody}"`, HMAC-SHA256 with the webhook
  * secret, hex digest; the header is `t=<unix>,v1=<hex>`. Uses a constant-time
  * comparison and rejects timestamps older than `tolerance` seconds.
+ *
+ * Secret rotation: for 24 hours after `webhooks.rotateSecret()`, every
+ * delivery carries `X-OmniSocials-Signature` (signed with the new secret) and
+ * `X-OmniSocials-Signature-Previous` (signed with the old secret, same
+ * format, same timestamp and body). To keep accepting deliveries while you
+ * switch secrets, verify `X-OmniSocials-Signature` with the new secret and,
+ * when that throws, verify `X-OmniSocials-Signature-Previous` with the old
+ * secret.
  *
  * @returns the parsed event object on success.
  * @throws {WebhookVerificationError} on any failure.

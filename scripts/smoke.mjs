@@ -55,7 +55,7 @@ const surface = {
   locations: ["search", "validate"],
   pinterest: ["listProducts", "validateProduct"],
   automations: ["list", "get", "create", "update", "delete", "listEvents"],
-  ads: ["listAccounts", "capabilities", "list", "get", "boost", "boostMulti", "create", "update", "activate", "activateMulti", "pause", "resume", "delete", "overview", "suggestions", "researchKeywords", "keywordMetrics"],
+  ads: ["listAccounts", "capabilities", "list", "get", "boost", "boostMulti", "update", "activate", "activateMulti", "pause", "resume", "delete", "overview", "suggestions", "researchKeywords", "keywordMetrics"],
   webhooks: ["list", "get", "create", "update", "delete", "rotateSecret"],
   limits: ["list"],
   featureRequests: ["create", "list", "get"],
@@ -74,6 +74,45 @@ assert.equal(typeof client.health, "function", "client.health missing");
 for (const method of ["defaults", "create", "get", "update", "delete", "attachAccount", "launch"]) {
   assert.equal(typeof client.ads.drafts[method], "function", `client.ads.drafts.${method} is not a function`);
 }
+// POST /ads/campaigns is gone (campaigns without ads could never start).
+assert.equal(client.ads.create, undefined, "client.ads.create was removed");
+
+// Ads API parity sub-resources (2026-11-05): one method per route of adsParity.js.
+const adsSurface = {
+  objects: ["tree", "get", "update", "setStatus", "duplicate", "importStatus", "startImport", "listExternal", "getExternal"],
+  campaignAds: ["list", "add", "get", "setStatus", "review"],
+  comments: ["list", "reply", "hide", "delete"],
+  targeting: ["search", "browse", "reachEstimate", "bidSuggestions"],
+  audiences: ["list", "create", "get", "update", "delete", "addMembers", "removeMembers", "addCompanies"],
+  leadForms: ["list", "create", "get", "update", "delete", "sendTestLead"],
+  leads: ["list", "counts", "update"],
+  conversions: ["destinations", "goals", "createCustom", "sendEvents"],
+  insights: ["query", "campaign", "ad", "timeline", "performance", "alerts"],
+  reports: ["list", "start", "get"],
+  rules: ["list", "create", "templates", "preview", "activity", "undo", "get", "update", "delete", "previewSaved", "runs"],
+  results: ["list", "upload", "totals", "metrics", "putMetric"],
+  media: ["list", "upload", "get", "delete"],
+  previews: ["create", "forAd"],
+  partnership: ["listContent", "listPermissions", "setPermission"],
+  accounts: ["identities", "health", "finance", "updateSettings", "listUsers", "addUser", "removeUser", "activity", "businesses", "dsa", "hierarchy"],
+  reachFrequency: ["create", "get", "cancel", "reserve"],
+  studies: ["list", "create"],
+  budgetSchedules: ["list", "create", "delete"],
+  google: ["searchTerms", "recommendations", "keywords", "assets", "sharedBudgets", "bidStrategies", "adSchedule", "labels", "localServicesLeads"],
+};
+let adsMethodCount = 0;
+for (const [sub, methods] of Object.entries(adsSurface)) {
+  assert.ok(client.ads[sub], `client.ads.${sub} missing`);
+  for (const method of methods) {
+    assert.equal(typeof client.ads[sub][method], "function", `client.ads.${sub}.${method} is not a function`);
+    adsMethodCount += 1;
+  }
+}
+for (const method of ["bulkStatus", "duplicate"]) {
+  assert.equal(typeof client.ads[method], "function", `client.ads.${method} is not a function`);
+  adsMethodCount += 1;
+}
+assert.equal(adsMethodCount, 108, "every route of adsParity.js has one method");
 
 // ─── Ads money calls are never sent twice ─────────────────────────────────────
 // A launch or activation that answered 5xx may have started spend, so it is
@@ -101,6 +140,27 @@ for (const method of ["defaults", "create", "get", "update", "delete", "attachAc
     assert.equal(calls.length, 1, "an activation must not be retried after a 502");
     assert.deepEqual(JSON.parse(calls[0].body), { confirm_budget_amount: 25 });
 
+    // Every parity call that can start or raise spend is sent once after a 502.
+    const parityMoney = {
+      "objects.update": [() => money.ads.objects.update(3, "ad_set", "238", { budget: { amount: 40, currency: "EUR" }, confirm_budget_amount: 40 }), "PATCH", /\/ads\/accounts\/3\/objects\/ad_set\/238$/],
+      "objects.setStatus": [() => money.ads.objects.setStatus(3, "campaign", "120", { status: "active", confirm_budget_amount: 20 }), "PUT", /\/ads\/accounts\/3\/objects\/campaign\/120\/status$/],
+      bulkStatus: [() => money.ads.bulkStatus({ campaign_ids: [7, 8], status: "active", confirm_budget_amount: 25 }), "POST", /\/ads\/campaigns\/bulk-status$/],
+      "campaignAds.setStatus": [() => money.ads.campaignAds.setStatus(7, 51, { status: "active", confirm_budget_amount: 25 }), "PUT", /\/ads\/campaigns\/7\/ads\/51\/status$/],
+      "rules.create": [() => money.ads.rules.create({ name: "Scale winners", conditions: [{ metric: "ctr", op: "gt", value: 2 }], action: { type: "adjust_budget", percent: 20, max_daily_budget: 50 }, confirm_max_daily_budget: 50 }), "POST", /\/ads\/rules$/],
+      "rules.update": [() => money.ads.rules.update(4, { enabled: true }), "PATCH", /\/ads\/rules\/4$/],
+      "rules.undo": [() => money.ads.rules.undo(9, { confirm_budget_amount: 25 }), "POST", /\/ads\/rules\/activity\/9\/undo$/],
+      "accounts.updateSettings": [() => money.ads.accounts.updateSettings(3, { spend_cap: 500, confirm_budget_amount: 500 }), "PATCH", /\/ads\/accounts\/3\/settings$/],
+      "reachFrequency.reserve": [() => money.ads.reachFrequency.reserve("rf 1", { ad_account_id: 3, confirm_budget_amount: 1000 }), "POST", /\/ads\/reach-frequency\/rf%201\/reserve$/],
+      "budgetSchedules.create": [() => money.ads.budgetSchedules.create(7, { start_at: "2026-11-27T00:00:00Z", end_at: "2026-11-30T00:00:00Z", budget_increase: { type: "absolute", value: 30 }, confirm_budget_amount: 30 }), "POST", /\/ads\/campaigns\/7\/budget-schedules$/],
+    };
+    for (const [name, [call, method, path]] of Object.entries(parityMoney)) {
+      calls.length = 0;
+      await assert.rejects(call());
+      assert.equal(calls.length, 1, `ads.${name} must not be retried after a 502`);
+      assert.equal(calls[0].method, method, `ads.${name} sends ${method}`);
+      assert.match(calls[0].url, path, `ads.${name} path`);
+    }
+
     calls.length = 0;
     await assert.rejects(money.ads.drafts.update("g-1", { objective: "traffic", platforms: ["meta"], budget: { amount: 10, currency: "EUR" }, targeting: { countries: ["NL"] }, ads: [] }));
     assert.equal(calls[0].method, "PUT");
@@ -111,6 +171,19 @@ for (const method of ["defaults", "create", "get", "update", "delete", "attachAc
     fast.backoffMs = () => 0;
     await assert.rejects(fast.ads.capabilities());
     assert.equal(calls.length, 2, "a read is retried after a 502");
+
+    calls.length = 0;
+    await assert.rejects(fast.ads.objects.tree(3, { status: ["active", "paused"], limit: 10 }));
+    assert.equal(calls.length, 2, "a parity read is retried after a 502");
+    assert.match(calls[0].url, /\/ads\/accounts\/3\/tree\?status=active%2Cpaused&limit=10$/);
+    calls.length = 0;
+    await assert.rejects(fast.ads.audiences.removeMembers("aud-1", { ad_account_id: 3, schema: ["email"], rows: [["fake-hash-1"]] }));
+    assert.equal(calls[0].method, "DELETE");
+    assert.deepEqual(JSON.parse(calls[0].body), { ad_account_id: 3, schema: ["email"], rows: [["fake-hash-1"]] });
+    calls.length = 0;
+    await assert.rejects(fast.ads.media.delete("v 9", { ad_account_id: 3, type: "video" }));
+    assert.match(calls[0].url, /\/ads\/media\/v%209\?ad_account_id=3&type=video$/);
+    assert.equal(calls[0].body, undefined);
     fast.backoffMs = origBackoff;
   } finally {
     globalThis.fetch = realFetch;
@@ -182,6 +255,61 @@ assert.equal(rl.status, 429);
 
     await tagged.posts.create({ content: "Hi", channels: ["instagram"], tags: ["Question"] });
     assert.deepEqual(JSON.parse(last().body).tags, ["Question"]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+// ─── Approve and reject: step_order only when given ───────────────────────────
+{
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: new URL(String(url)), method: init.method, body: init.body });
+    const body = init.body ? JSON.parse(init.body) : null;
+    if (body?.step_order === 1) {
+      return new Response(
+        JSON.stringify({ error: { code: "step_changed", message: "The review is on step 2 now.", current_step_order: 2 } }),
+        { status: 409, headers: { "content-type": "application/json" } }
+      );
+    }
+    return new Response(JSON.stringify({ data: { id: "1024" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    const rv = new OmniSocials({ apiKey: "omsk_live_smoke", maxRetries: 0 });
+    const last = () => calls[calls.length - 1];
+
+    await rv.posts.approve("1024");
+    assert.equal(last().method, "POST");
+    assert.equal(last().url.pathname, "/v1/posts/1024/approve");
+    assert.equal(last().body, undefined, "approve without step_order sends no body");
+
+    await rv.posts.approve("1024", { step_order: 2 });
+    assert.deepEqual(JSON.parse(last().body), { step_order: 2 });
+
+    await rv.posts.reject("1024");
+    assert.equal(last().url.pathname, "/v1/posts/1024/reject");
+    assert.equal(last().body, undefined, "reject without options sends no body");
+
+    await rv.posts.reject("1024", "Wrong CTA link");
+    assert.deepEqual(JSON.parse(last().body), { comment: "Wrong CTA link" }, "reject(id, comment) still works");
+
+    await rv.posts.reject("1024", { comment: "Wrong CTA link", step_order: 2 });
+    assert.deepEqual(JSON.parse(last().body), { comment: "Wrong CTA link", step_order: 2 });
+
+    await rv.posts.reject("1024", { step_order: 3 });
+    assert.deepEqual(JSON.parse(last().body), { step_order: 3 });
+
+    await assert.rejects(rv.posts.approve("1024", { step_order: 1 }), (err) => {
+      assert.ok(err instanceof APIError);
+      assert.equal(err.status, 409);
+      assert.equal(err.code, "step_changed");
+      assert.equal(err.body.error.current_step_order, 2);
+      return true;
+    });
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -391,6 +519,29 @@ assert.equal(rejectedEvent.data.approval.status, "rejected");
 assert.equal(rejectedEvent.data.approval.reason, "Wrong product photo");
 assert.deepEqual(rejectedEvent.data.targets, []);
 
+// Secret rotation: for 24 hours a delivery also carries
+// X-OmniSocials-Signature-Previous, the same scheme signed with the OLD secret.
+// The new secret fails on it; the old secret verifies it.
+{
+  const oldSecret = "whsec_smoke_old_secret";
+  const previousHeader = `t=${timestamp},v1=${createHmac("sha256", oldSecret)
+    .update(`${timestamp}.${rawBody}`, "utf8")
+    .digest("hex")}`;
+  const currentHeader = sign(timestamp, rawBody); // signed with the new `secret`
+  assert.throws(
+    () => verifyWebhookSignature({ payload: rawBody, signature: currentHeader, secret: oldSecret }),
+    WebhookVerificationError,
+    "the old secret does not verify the new signature"
+  );
+  assert.throws(
+    () => verifyWebhookSignature({ payload: rawBody, signature: previousHeader, secret }),
+    WebhookVerificationError,
+    "the new secret does not verify the Previous header"
+  );
+  const viaPrevious = verifyWebhookSignature({ payload: rawBody, signature: previousHeader, secret: oldSecret });
+  assert.deepEqual(viaPrevious, eventObject, "the Previous header verifies with the old secret");
+}
+
 // 4. Wrong secret is rejected.
 assert.throws(
   () => verifyWebhookSignature({ payload: rawBody, signature: sign(timestamp, rawBody), secret: "whsec_wrong" }),
@@ -418,6 +569,7 @@ const cjsVerified = cjs.verifyWebhookSignature({
 assert.equal(cjsVerified.id, eventObject.id);
 
 console.log("All smoke tests passed.");
-console.log("- ESM import OK, client + 11 resources expose all inventory methods (ads money calls not retried)");
-console.log("- Webhook signature: accepts valid, rejects tampered/stale/wrong-secret/malformed");
+console.log("- ESM import OK, client + 11 resources expose all inventory methods, 108 ads parity methods (ads money calls not retried)");
+console.log("- posts.approve / reject send step_order only when given; step_changed keeps current_step_order");
+console.log("- Webhook signature: accepts valid, rejects tampered/stale/wrong-secret/malformed; Previous header verifies with the old secret");
 console.log("- CJS require() OK (dual build works)");

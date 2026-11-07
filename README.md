@@ -322,14 +322,40 @@ await client.posts.delete(one.id);  // resolves to null (204)
 
 `retry` re-publishes only the platforms that failed, on the same post; platforms that already succeeded are never posted again. It is asynchronous: a 200 means the retry is queued, so poll `get` for the outcome. Max 3 retries per platform.
 
+These calls answer `409` and change nothing when the post is not in a state for them:
+
+- `post_publishing`: `update` or `delete` while the post is publishing (status `posting`) or a retry publishes one of its channels. Poll `get` until the status is `published`, `warning` or `failed`. An `update` with only `tags` still works.
+- `review_required`: changes were requested on the post (`approval_status` `rejected`), so `publish`, or an `update` that would schedule it, is refused. It needs a new review: create it again with `approval_workflow_id`. Saving it as a draft works.
+- `retry_in_progress`: `retry` while another retry of the post runs.
+- `media_processing`: a media id in `create`, `createAndPublish` or `update` is still processing. Wait until `client.media.get(id)` says `ready`, then send the same request again. A file whose processing failed answers `400 invalid_media`: upload it again.
+
 ### Approve or reject a post
 
 ```ts
-await client.posts.approve(one.id);                              // approve the current approval-workflow step
-await client.posts.reject(one.id, "Wrong CTA link, please fix."); // reject and stop the workflow (comment optional)
+import { APIError } from "@omnisocials/sdk";
+
+// Read the step you review first, then name it on the decision.
+const { data: review } = await client.posts.getApproval(one.id);
+const step_order = review.current_step ?? undefined;
+
+try {
+  await client.posts.approve(one.id, { step_order }); // approve the step you reviewed
+  // or: reject and stop the workflow (comment optional)
+  // await client.posts.reject(one.id, { comment: "Wrong CTA link, please fix.", step_order });
+} catch (err) {
+  if (err instanceof APIError && err.code === "step_changed") {
+    // Somebody decided since you read it: nothing was decided. Read the approval again.
+    const { current_step_order } = (err.body as { error: { current_step_order: number } }).error;
+    console.log("The review is on step", current_step_order);
+  } else {
+    throw err;
+  }
+}
 ```
 
-Only works on a post with `approval_status: "pending"` (`status: "in_approval"`). Both act on behalf of the user who owns the API key, who must be a listed approver for the workflow's CURRENT step — steps approve in order, so being an approver on a later step is not enough yet (returns a `403 forbidden` `APIError`). Approving the last step finalizes the post (`scheduled` or `posting`); rejecting stops the whole workflow immediately, not just the current step.
+Only works on a post with `approval_status: "pending"` (`status: "in_approval"`). Both act on behalf of the user who owns the API key, who must be a listed approver for the workflow's CURRENT step. Steps approve in order, so being an approver on a later step is not enough yet (returns a `403 forbidden` `APIError`). Approving the last step finalizes the post (`scheduled` or `posting`); rejecting stops the whole workflow immediately, not just the current step.
+
+`step_order` is optional: the `current_step` of `getApproval`. When the review is on another step now (somebody decided since you read it, or a retried call already went through), nothing is decided and the call throws a `409` `step_changed` `APIError` with `error.current_step_order`, the step the review is on now. Without `step_order` the call acts on whatever step is current, so a retry after a timeout could approve the next step too. `client.posts.approve(id)` and `client.posts.reject(id, "comment")` still work.
 
 ### Read the approval review
 
@@ -366,7 +392,7 @@ const upload = await client.media.uploadFromUrl({
 console.log(upload.data.id, upload.compatibility);
 ```
 
-Videos over 100MB are processed in the background and come back with status `"processing"`. Every upload response includes a `compatibility` block listing connected platforms that would reject the file.
+Videos over 100MB are processed in the background and come back with status `"processing"`; when such a file cannot be queued, the call answers `503 processing_unavailable` (send the same request again in a minute). Every upload response includes a `compatibility` block listing connected platforms that would reject the file.
 
 ### Upload a local file (multipart)
 
@@ -529,6 +555,8 @@ for (const account of accounts) {
 const { data: ig } = await client.accounts.get(accounts[0].id);
 ```
 
+`status` is `active` or `needs_reconnect` (the token was revoked or expired; Bluesky also when its sign-in could not be renewed). Posts to a `needs_reconnect` account fail until it is reconnected in the OmniSocials app. OmniSocials Connect customer workspaces can also show `pick_pending` (Facebook, Connect customers only: no Page chosen yet).
+
 ## Analytics
 
 ```ts
@@ -621,11 +649,11 @@ Without `source` the list reads the Pinterest catalog (with `price`, `currency`,
 
 ## Ads
 
-Boost a published post or create a new ad on Meta, Pinterest, TikTok, LinkedIn, X and Google. Ads spend real money, so every call that starts or raises spend asks for the amount again: `ads.activate()`, `ads.activateMulti()`, `ads.drafts.launch()` and a budget raise through `ads.update()`. Show the person the amount first and pass it only after they agree. These calls are not retried after a 5xx or a timeout, because the first attempt may have started the ad: read the campaign or the draft to see what happened.
+Boost a published post or create a new ad on Meta, Pinterest, TikTok, LinkedIn, X and Google. Boosts and new ads are drafts: your code writes the draft, and the person who pays sees the amount and starts the ad in OmniSocials from the draft's `review_url`. A key starts and raises spend itself only with the opt-in **Start ads** switch (scope `ads:spend`). Without it `ads.activate()`, `ads.activateMulti()`, `ads.resume()`, `ads.drafts.launch()`, a budget raise or any change of a campaign that reached the network through `ads.update()`, and the parity calls that switch something on or raise a budget answer `403 start_in_app`, and the error message names the page where the person does it. Google (`api_draft_only` of `ads.capabilities()`) always stops at the draft, also with `ads:spend`. `ads.pause()` and `ads.delete()` stay open, except on the networks in `api_stop_in_app` (Google), where a campaign that reached the network also answers `403 start_in_app`. Only a paused campaign resumes (`409 not_paused`). The calls that start or raise spend repeat the amount (`confirm_budget_amount`) and are not retried after a 5xx or a timeout, only after a 429.
 
-The `ads:read` and `ads:write` scopes are opt-in: create the API key with **Ads** switched on (Settings, API). A key without them gets `403 insufficient_scope`. Ad accounts are connected and picked in the OmniSocials dashboard. Budgets are in major units (10 = 10 EUR) in the ad account's currency.
+The `ads:read` and `ads:write` scopes are opt-in: create the API key with **Ads** switched on (Settings, API). `ads:spend` is the **Start ads** switch under it, offered only to a person with `manage_ads`. A key without `ads:read` / `ads:write` gets `403 insufficient_scope`; a key without `ads:spend` gets `403 start_in_app` on the calls that start or raise spend. Ad accounts are connected and picked in the OmniSocials dashboard. Budgets are in major units (10 = 10 EUR) in the ad account's currency: a draft whose `budget.currency` differs from the attached ad account's currency answers `400 currency_mismatch`. Ads errors may carry `param`, the field at fault: read it from `error.body.error.param` on the thrown `APIError`.
 
-### Create an ad (draft, then launch)
+### Create an ad (a draft the person starts)
 
 ```ts
 const caps = await client.ads.capabilities();
@@ -649,11 +677,11 @@ const { data: draft } = await client.ads.drafts.create({
   ],
 });
 
-// A draft spends nothing. Hand draft.review_url to the person, or start it
-// after they confirmed 10 EUR a day per network:
-const { data: launch } = await client.ads.drafts.launch(draft.group_id, { confirm_budget_amount: 10 });
-for (const r of launch.results) console.log(r.platform, r.ok ? "started" : r.error);
+// A draft spends nothing. The person checks it and starts it in OmniSocials:
+console.log(`Check and start your ad: ${draft.review_url}`);
 ```
+
+With a key that has `ads:spend`, `client.ads.drafts.launch(draft.group_id, { confirm_budget_amount: 10 })` starts the draft after the person agreed to the amount; Google is skipped with code `start_in_app`. Without `ads:spend` the call answers `403 start_in_app`.
 
 A draft needs no ad account; `client.ads.drafts.attachAccount(groupId, { platform, ad_account_id })` sets one, and `campaigns[].readiness` says what still stops a network. On Meta an ad can carry a second upright 9:16 file for Stories and Reels: `placement_media: { stories_reels: { url, type } }`.
 
@@ -670,15 +698,15 @@ const { data: boost } = await client.ads.boost({
   targeting: { countries: ["NL"] },
 });
 
-// The boost is a draft. Start it only after the person confirmed 5 a day:
-await client.ads.activate(boost.id, 5);
+// The boost is a draft: the person starts it in OmniSocials.
+console.log(boost.status); // "draft"
 ```
 
-`client.ads.boostMulti()` makes one draft boost per ad account (up to 10, the same budget each). `client.ads.suggestions()` lists posts that do better than your median, `client.ads.overview()` the totals, and `client.ads.list()`, `get()`, `pause()`, `resume()` and `delete()` manage campaigns. Keyword ideas through the connected Google Ads account: `client.ads.researchKeywords({ keywords: ["running shoes"], country: "NL" })` and `client.ads.keywordMetrics({ keywords: [...] })`.
+`client.ads.boostMulti()` makes one draft boost per ad account (up to 10, the same budget each). `client.ads.suggestions()` lists posts that do better than your median, `client.ads.overview()` the totals (`totals.spend` is `null` when the campaigns use more than one currency: read `totals_by_currency`), and `client.ads.list()`, `get()`, `pause()` and `delete()` manage campaigns. Keyword ideas through the connected Google Ads account: `client.ads.researchKeywords({ keywords: ["running shoes"], country: "NL" })` and `client.ads.keywordMetrics({ keywords: [...] })`.
 
 ## Webhooks
 
-Events: `post.scheduled`, `post.published`, `post.failed`, `post.approved` (the last step of a post's approval workflow is approved) and `post.rejected` (an approver rejects the post; it will not publish). The two approval events carry `data.approval` with `status`, `decided_by` (the approver's user id) and `reason` (`null` on `post.approved`), and an empty `data.targets`. `ad.status_changed` fires when an ad campaign changes status (for example `pending_review` to `active` or `rejected`); its `data` is the campaign, typed as `AdStatusChangedEventData` (`campaign_id`, `name`, `platform`, `campaign_type`, `status`, `previous_status`, `external_campaign_id`, `budget`).
+Events: `post.scheduled`, `post.published`, `post.failed`, `post.approved` (the last step of a post's approval workflow is approved) and `post.rejected` (an approver rejects the post; it will not publish). The two approval events carry `data.approval` with `status`, `decided_by` (the approver's user id) and `reason` (`null` on `post.approved`), and an empty `data.targets`. `ad.status_changed` fires when an ad campaign changes status (for example `pending_review` to `active` or `rejected`); its `data` is the campaign, typed as `AdStatusChangedEventData` (`campaign_id`, `name`, `platform`, `campaign_type`, `status`, `previous_status`, `external_campaign_id`, `budget`). Subscribing to `ad.status_changed` or any other Ads event (`ad.*`, `campaign.*`, `lead.*`, `ads.*`, `ad_rule.*`) needs the `ads:read` scope on the key and `access_ads` for its person (`403 insufficient_scope` / `insufficient_permission`).
 
 ### Manage endpoints
 
@@ -693,9 +721,11 @@ await client.webhooks.list();
 await client.webhooks.get(webhook.id);
 await client.webhooks.update(webhook.id, { is_active: false });
 const rotated = await client.webhooks.rotateSecret(webhook.id);
-console.log(rotated.data.secret); // the old secret stops working
+console.log(rotated.data.secret); // the old secret keeps signing for 24 hours
 await client.webhooks.delete(webhook.id);
 ```
+
+Every webhook carries `workspace_id`. `list()` and `get()` also return the organisation-wide webhooks of the key's organisation (`workspace_id: null`, made in the OmniSocials dashboard; they receive the events of every workspace), and `update()`, `delete()` and `rotateSecret()` work on them too. Webhooks you create through the API belong to the key's workspace. When the person behind a webhook loses access to the organisation or workspace, OmniSocials switches the webhook off: `is_active` is `false` and `last_failure.error` says why. `update(id, { is_active: true })` switches it on again.
 
 ### Verify deliveries (Express example)
 
@@ -742,6 +772,32 @@ app.post(
 ```
 
 `verifyWebhookSignature` uses a constant-time comparison, rejects timestamps older than `tolerance` seconds (replay protection), throws `WebhookVerificationError` on any failure, and returns the parsed event on success.
+
+### Rotate the secret without missing deliveries
+
+For 24 hours after `rotateSecret()`, every delivery carries two headers: `X-OmniSocials-Signature`, signed with the new secret, and `X-OmniSocials-Signature-Previous`, signed with the old secret (same format, same timestamp and body). Verify the first with the new secret and, when that fails, the second with the old one:
+
+```ts
+function verifyDelivery(req: express.Request) {
+  try {
+    return verifyWebhookSignature({
+      payload: req.body,
+      signature: req.get("X-OmniSocials-Signature") ?? "",
+      secret: process.env.OMNISOCIALS_WEBHOOK_SECRET!, // the new secret
+    });
+  } catch (err) {
+    const previous = req.get("X-OmniSocials-Signature-Previous");
+    if (!(err instanceof WebhookVerificationError) || !previous) throw err;
+    return verifyWebhookSignature({
+      payload: req.body,
+      signature: previous,
+      secret: process.env.OMNISOCIALS_WEBHOOK_SECRET_OLD!, // the old secret
+    });
+  }
+}
+```
+
+Rotating again within the 24 hours replaces the previous secret with the one you just rotated out.
 
 ## Inbox
 
