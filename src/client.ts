@@ -1,6 +1,7 @@
 import {
   APIConnectionError,
   AuthenticationError,
+  OmniSocialsError,
   createAPIError,
 } from "./errors.js";
 import type { HealthResponse } from "./types.js";
@@ -22,7 +23,7 @@ import { AdsResource } from "./resources/ads.js";
 import { WebhooksResource } from "./resources/webhooks.js";
 import { InboxResource } from "./resources/inbox.js";
 
-export const VERSION = "0.16.0";
+export const VERSION = "0.17.0";
 
 const DEFAULT_BASE_URL = "https://api.omnisocials.com/v1";
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -249,7 +250,18 @@ export class OmniSocials {
   // ─── Internals ──────────────────────────────────────────────────────────────
 
   private buildUrl(path: string, query?: Record<string, QueryValue>): string {
-    let url = `${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+    // Every id in `path` was encoded with encodeURIComponent, which leaves "."
+    // and ".." as they are: URL normalisation drops such a segment or climbs
+    // one level, so an id of ".." would reach another endpoint of the same API
+    // key, and an empty id the list route. Refused before anything is sent.
+    const fullPath = path.startsWith("/") ? path : `/${path}`;
+    const segments = fullPath.split("?")[0].split("/").slice(1);
+    if (segments.some((s) => s === "" || s === "." || s === "..")) {
+      throw new OmniSocialsError(
+        `Invalid request path ${JSON.stringify(fullPath)}: an id cannot be empty, "." or "..".`
+      );
+    }
+    let url = `${this.baseUrl}${fullPath}`;
     if (query) {
       const params = new URLSearchParams();
       for (const [key, value] of Object.entries(query)) {

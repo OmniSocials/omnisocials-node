@@ -53,7 +53,12 @@ export class WebhooksResource {
    * as on `create()`. Works on organisation-wide webhooks too.
    * `{ is_active: true }` switches on a webhook that was switched off
    * (also an automatic switch-off); setting `url`, `events` or switching it
-   * on makes the key's creator the person behind the webhook.
+   * on makes the key's creator the person behind the webhook. Setting `url`
+   * on an organisation-wide webhook (even its current one) moves it to the
+   * key's workspace: from then on it gets only that workspace's events, and
+   * the answer shows the new `workspace_id`. When the webhook has Ads events
+   * after the change, setting `url` or `events` or switching it on needs
+   * `ads:read` and `access_ads` too (403 otherwise, nothing changed).
    */
   update(id: string, params: UpdateWebhookParams): Promise<ItemResponse<Webhook>> {
     return this.client.patch(`/webhooks/${encodeURIComponent(id)}`, params);

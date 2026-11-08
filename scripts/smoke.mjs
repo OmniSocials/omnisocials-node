@@ -190,6 +190,44 @@ assert.equal(adsMethodCount, 108, "every route of adsParity.js has one method");
   }
 }
 
+// ─── Path segments: an id stays inside one encoded segment ────────────────────
+// encodeURIComponent keeps "/", "?" and "#" inside the segment; an id of "",
+// "." or ".." (which URL normalisation would drop or climb) is refused before
+// anything is sent. Uses a stub fetch, no network.
+{
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), method: init.method });
+    return new Response(JSON.stringify({ data: {} }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    const c = new OmniSocials({ apiKey: "omsk_live_smoke", maxRetries: 0 });
+    await c.posts.publish("../webhooks/wh_fake/rotate-secret#");
+    assert.equal(
+      calls[0].url,
+      "https://api.omnisocials.com/v1/posts/..%2Fwebhooks%2Fwh_fake%2Frotate-secret%23/publish"
+    );
+    for (const bad of ["", ".", ".."]) {
+      calls.length = 0;
+      for (const call of [
+        () => c.posts.delete(bad),
+        () => c.webhooks.rotateSecret(bad),
+        () => c.inbox.markRead(bad),
+        () => c.ads.get(bad),
+      ]) {
+        await assert.rejects(call(), OmniSocialsError, `an id of ${JSON.stringify(bad)} is refused`);
+      }
+      assert.equal(calls.length, 0, `an id of ${JSON.stringify(bad)} sends nothing`);
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
 // Error hierarchy sanity.
 const rl = new RateLimitError({ status: 429, code: "rate_limit_exceeded", message: "slow down", retryAfter: 45 });
 assert.ok(rl instanceof APIError && rl instanceof OmniSocialsError);
@@ -571,5 +609,6 @@ assert.equal(cjsVerified.id, eventObject.id);
 console.log("All smoke tests passed.");
 console.log("- ESM import OK, client + 11 resources expose all inventory methods, 108 ads parity methods (ads money calls not retried)");
 console.log("- posts.approve / reject send step_order only when given; step_changed keeps current_step_order");
+console.log("- An id stays inside one encoded path segment; an id of \"\", \".\" or \"..\" is refused before sending");
 console.log("- Webhook signature: accepts valid, rejects tampered/stale/wrong-secret/malformed; Previous header verifies with the old secret");
 console.log("- CJS require() OK (dual build works)");

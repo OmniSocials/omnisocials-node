@@ -1921,9 +1921,10 @@ export interface AutomationEvent {
    * (a Page made the comment, or the person's settings block messages),
    * `already_replied`, `dm_window_passed`, `dms_closed` (X: the person does
    * not accept DMs from the account), `no_credits` (X DMs had no credits for
-   * the answer), `opted_out` (the person replied STOP before) or
-   * `automation_off` (paused or finished while the answer waited); `failed`:
-   * the platform's error text.
+   * the answer), `opted_out` (the person replied STOP before),
+   * `automation_off` (paused or finished while the answer waited) or
+   * `plan_inactive` (the organisation had no active plan or trial, so
+   * nothing was sent); `failed`: the platform's error text.
    */
   reason: string | null;
   /** `reason` in plain words. */
