@@ -1305,7 +1305,75 @@ export interface Account {
     url?: string | null;
     [key: string]: unknown;
   };
+  /**
+   * X accounts only: how often OmniSocials reads the account's X statistics,
+   * who pays and whether the reads are paused. X bills every read; OmniSocials
+   * passes X's price on as credits (half a credit per post check, plus half a
+   * credit for a video or GIF, 1 credit per follower count). `null` when the
+   * setting could not be read; absent on other platforms.
+   */
+  x_statistics?: AccountXStatistics | null;
   [key: string]: unknown;
+}
+
+/**
+ * How often each X post is checked: `full` (5 checks: about 5 hours, day 1,
+ * 3 and 7, and day 30 for posts with 100+ views), `light` (2 checks: about 5
+ * hours and day 7), `off`, or `custom` (OmniSocials Connect keys only, with
+ * `post_schedule`).
+ */
+export type XStatisticsPosts = "full" | "light" | "off" | "custom";
+
+/**
+ * How often the X follower count is read: `daily`, `weekly` or `off`;
+ * OmniSocials Connect keys also `hourly` and `6h`.
+ */
+export type XStatisticsFollowers = "daily" | "weekly" | "off" | "hourly" | "6h";
+
+/**
+ * A custom check schedule (OmniSocials Connect keys, with `posts: "custom"`).
+ * `at`: times after publishing, such as `["1h", "3h", "1d", "7d"]` (at most
+ * 24, 1h to 365d, at least 1 hour apart); `then_every`: repeat after the last
+ * one (1d to 30d); `until`: stop repeating after this age.
+ */
+export interface XStatisticsPostSchedule {
+  at: string[];
+  then_every?: string;
+  until?: string;
+}
+
+/** `Account.x_statistics`: the X statistics setting of an X account. */
+export interface AccountXStatistics {
+  posts: XStatisticsPosts | (string & {});
+  followers: XStatisticsFollowers | (string & {});
+  /** The custom schedule when `posts` is `custom`, else `null`. */
+  post_schedule: XStatisticsPostSchedule | null;
+  /** Where the setting comes from: the account itself, its Connect customer, the partner's default, or the OmniSocials default. */
+  source: "account" | "customer" | "partner_default" | "default" | (string & {});
+  /** Who pays: the organisation's `credits`, or the Connect partner's `own_x_app`. */
+  billing: "credits" | "own_x_app" | (string & {});
+  /** `paused` when the organisation ran out of credits; `off` when posts and followers are both off. */
+  state: "active" | "paused" | "off" | (string & {});
+  paused_reason: "insufficient_credits" | (string & {}) | null;
+}
+
+/**
+ * The `x_statistics` change of `accounts.update()`. Send one key or both; a
+ * key left out keeps its value.
+ */
+export interface XStatisticsInput {
+  posts?: XStatisticsPosts;
+  followers?: XStatisticsFollowers;
+  /** OmniSocials Connect keys only, with `posts: "custom"`. */
+  post_schedule?: XStatisticsPostSchedule;
+}
+
+export interface UpdateAccountParams {
+  /**
+   * The new X statistics setting. `null` (OmniSocials Connect keys only)
+   * gives the account back to its customer's setting.
+   */
+  x_statistics: XStatisticsInput | null;
 }
 
 /** Response of `accounts.list()`: `{ data, workspace_id?, workspace_name?, workspace_icon? }`. */
@@ -1363,6 +1431,80 @@ export interface PostAnalytics {
 export interface PostsAnalyticsResponse extends ItemResponse<PostAnalytics[]> {
   /** Number of entries returned (equals the number of valid ids requested). */
   count?: number;
+}
+
+/** One tweet of a post read by `analytics.refreshPost()` (each part of a thread is one). */
+export interface PostRefreshTweet {
+  /** The tweet id. */
+  id: string;
+  metrics: Record<string, number | string>;
+  read_at: string;
+  [key: string]: unknown;
+}
+
+/** `data` of `analytics.refreshPost()`. */
+export interface PostRefreshResult {
+  post_id: number | string;
+  tweets: PostRefreshTweet[];
+  /**
+   * What the read cost: 0.5 per tweet (plus 0.5 per video or GIF tweet), 0
+   * when the post was already read this UTC day or the partner's own X app
+   * pays.
+   */
+  credits_used: number;
+  read_at: string;
+  [key: string]: unknown;
+}
+
+// ─── Credits ─────────────────────────────────────────────────────────────────
+
+/** One X account in `Credits.x_statistics.accounts`. */
+export interface CreditsXStatisticsAccount {
+  /** The account id, as in `accounts.list()` (`<workspace_id>_x`). */
+  account_id: string;
+  workspace_id: number;
+  handle: string | null;
+  posts: XStatisticsPosts | (string & {});
+  followers: XStatisticsFollowers | (string & {});
+  /** Tweets published in the last 30 days. */
+  tweets_30d: number;
+  /** The estimate for a month at this setting, in credits. */
+  credits_month: number;
+  [key: string]: unknown;
+}
+
+/** `Credits.x_statistics`: what X statistics cost the organisation. */
+export interface CreditsXStatistics {
+  /** `paused` when the balance reached 0 (reads stop until credits are added). */
+  state: "active" | "paused" | (string & {});
+  paused_at: string | null;
+  /** Whether X statistics are charged yet, and from when. */
+  charging: { active: boolean; from: string | null };
+  /** Credits per read: `{ post_read: 0.5, media_read: 0.5, follower_read: 1 }`. */
+  prices: { post_read: number; media_read: number; follower_read: number; [key: string]: number };
+  /** The estimate for a month over every X account, in credits. */
+  total_credits_month: number;
+  /** This month's reads and the credits they used. */
+  this_month: {
+    post_reads: number;
+    media_reads: number;
+    follower_reads: number;
+    refreshes: number;
+    credits: number;
+    [key: string]: number;
+  };
+  accounts: CreditsXStatisticsAccount[];
+  [key: string]: unknown;
+}
+
+/** `data` of `credits.get()`. 1 credit = EUR 0.01. */
+export interface Credits {
+  balance: number;
+  auto_refill: { enabled: boolean };
+  /** Credits used this month, per reason (for example `x_statistics`, `x_url_post`, `x_dm`). */
+  this_month: Record<string, number>;
+  x_statistics: CreditsXStatistics;
+  [key: string]: unknown;
 }
 
 /** Per-platform block inside `AnalyticsOverview.platform_breakdown`. */
@@ -2736,6 +2878,8 @@ export type WebhookEventType =
   | "post.approved"
   | "post.rejected"
   | "ad.status_changed"
+  | "x_statistics.paused"
+  | "x_statistics.resumed"
   | AdsWebhookEventType;
 
 export interface Webhook {
@@ -2782,7 +2926,8 @@ export interface CreateWebhookParams {
    * post.approved, post.rejected; for ads ad.status_changed, ad.created,
    * ad.updated, ad.review, ad.delivery_issue, campaign.created,
    * campaign.updated, campaign.budget, lead.received, ads.sync_failed,
-   * ads.sync_recovered, ads.initial_sync_completed, ad_rule.triggered.
+   * ads.sync_recovered, ads.initial_sync_completed, ad_rule.triggered;
+   * for X statistics x_statistics.paused, x_statistics.resumed.
    */
   events: string[];
 }
@@ -2846,6 +2991,20 @@ export interface AdStatusChangedEventData {
   budget: AdBudget | null;
 }
 
+/**
+ * `data` of an `x_statistics.paused` or `x_statistics.resumed` delivery:
+ * the organisation's X statistics stopped at 0 credits (`reason`
+ * `insufficient_credits`) or started again after credits came in
+ * (`credits_added`). One delivery per workspace with X. Narrow on
+ * `event.type`, then read `event.data as unknown as XStatisticsEventData`.
+ */
+export interface XStatisticsEventData {
+  workspace_id: number | string | null;
+  /** The X account, as in `accounts.list()` (`<workspace_id>_x`). */
+  account_id: string;
+  reason: "insufficient_credits" | "credits_added" | (string & {});
+}
+
 export interface WebhookEvent {
   /** Unique delivery id. */
   id: string;
@@ -2853,7 +3012,8 @@ export interface WebhookEvent {
   created_at: string;
   /**
    * A post event's data. For `ad.status_changed` see
-   * {@link AdStatusChangedEventData}. The other ads events carry the
+   * {@link AdStatusChangedEventData}, for `x_statistics.paused` and
+   * `x_statistics.resumed` {@link XStatisticsEventData}. The other ads events carry the
    * campaign (plus `details`) or their own data (a lead, a rule run, an ad
    * account), never a post.
    */

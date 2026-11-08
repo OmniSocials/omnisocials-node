@@ -15,6 +15,7 @@ import { FeatureRequestsResource } from "./resources/feature-requests.js";
 import { ApprovalWorkflowsResource } from "./resources/approval-workflows.js";
 import { AccountsResource } from "./resources/accounts.js";
 import { AnalyticsResource } from "./resources/analytics.js";
+import { CreditsResource } from "./resources/credits.js";
 import { LocationsResource } from "./resources/locations.js";
 import { AudioResource } from "./resources/audio.js";
 import { PinterestResource } from "./resources/pinterest.js";
@@ -23,7 +24,7 @@ import { AdsResource } from "./resources/ads.js";
 import { WebhooksResource } from "./resources/webhooks.js";
 import { InboxResource } from "./resources/inbox.js";
 
-export const VERSION = "0.17.0";
+export const VERSION = "0.18.0";
 
 const DEFAULT_BASE_URL = "https://api.omnisocials.com/v1";
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -88,6 +89,8 @@ export class OmniSocials {
   readonly approvalWorkflows: ApprovalWorkflowsResource;
   readonly accounts: AccountsResource;
   readonly analytics: AnalyticsResource;
+  /** The organisation's credit balance and what X statistics cost (scope `credits:read`). */
+  readonly credits: CreditsResource;
   readonly locations: LocationsResource;
   readonly audio: AudioResource;
   readonly pinterest: PinterestResource;
@@ -129,6 +132,7 @@ export class OmniSocials {
     this.approvalWorkflows = new ApprovalWorkflowsResource(this);
     this.accounts = new AccountsResource(this);
     this.analytics = new AnalyticsResource(this);
+    this.credits = new CreditsResource(this);
     this.locations = new LocationsResource(this);
     this.audio = new AudioResource(this);
     this.pinterest = new PinterestResource(this);

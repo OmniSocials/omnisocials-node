@@ -50,8 +50,9 @@ const surface = {
   folders: ["list", "create", "update", "delete"],
   hashtagSets: ["list", "get", "create", "update", "delete"],
   tags: ["list", "create", "update", "delete", "apply"],
-  accounts: ["list", "get"],
-  analytics: ["post", "posts", "overview", "accounts", "bestTimes", "tags"],
+  accounts: ["list", "get", "update"],
+  analytics: ["post", "posts", "refreshPost", "overview", "accounts", "bestTimes", "tags"],
+  credits: ["get"],
   locations: ["search", "validate"],
   pinterest: ["listProducts", "validateProduct"],
   automations: ["list", "get", "create", "update", "delete", "listEvents"],
@@ -463,6 +464,108 @@ assert.equal(rl.status, 429);
   }
 }
 
+// ─── X statistics on credits: accounts.update, analytics.refreshPost, credits.get ─
+// Uses a stub fetch, no network.
+{
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  let status = 200;
+  const json = (code, body) =>
+    new Response(JSON.stringify(body), { status: code, headers: { "content-type": "application/json" } });
+  const xStatistics = {
+    posts: "light",
+    followers: "daily",
+    post_schedule: null,
+    source: "account",
+    billing: "credits",
+    state: "active",
+    paused_reason: null,
+  };
+  globalThis.fetch = async (url, init) => {
+    const call = { url: new URL(String(url)), method: init.method, body: init.body };
+    calls.push(call);
+    if (status !== 200) return json(status, { error: { code: status === 402 ? "insufficient_credits" : "refresh_failed", message: "no" } });
+    if (call.url.pathname === "/v1/credits") {
+      return json(200, {
+        data: {
+          balance: 412,
+          auto_refill: { enabled: false },
+          this_month: { x_statistics: 31 },
+          x_statistics: {
+            state: "active",
+            paused_at: null,
+            charging: { active: true, from: "2027-01-01T00:00:00.000Z" },
+            prices: { post_read: 0.5, media_read: 0.5, follower_read: 1 },
+            total_credits_month: 38,
+            this_month: { post_reads: 40, media_reads: 2, follower_reads: 8, refreshes: 1, credits: 31 },
+            accounts: [{ account_id: "1234_x", workspace_id: 1234, handle: "@omnisocials", posts: "full", followers: "daily", tweets_30d: 12, credits_month: 38 }],
+          },
+        },
+      });
+    }
+    if (call.url.pathname.endsWith("/refresh")) {
+      return json(200, { data: { post_id: 9123, tweets: [{ id: "1859", metrics: { views: 3412 }, read_at: "2027-01-08T09:12:04Z" }], credits_used: 0.5, read_at: "2027-01-08T09:12:04Z" } });
+    }
+    return json(200, { data: { id: "1234_x", platform: "x", x_statistics: xStatistics } });
+  };
+  try {
+    const x = new OmniSocials({ apiKey: "omsk_live_smoke", maxRetries: 0 });
+    const last = () => calls[calls.length - 1];
+
+    const updated = await x.accounts.update("1234_x", { x_statistics: { posts: "light", followers: "daily" } });
+    assert.equal(last().method, "PATCH");
+    assert.equal(last().url.pathname, "/v1/accounts/1234_x");
+    assert.deepEqual(JSON.parse(last().body), { x_statistics: { posts: "light", followers: "daily" } });
+    assert.equal(updated.data.x_statistics.posts, "light");
+
+    await x.accounts.update("1234_x", { x_statistics: { followers: "off" } });
+    assert.deepEqual(JSON.parse(last().body), { x_statistics: { followers: "off" } }, "only the given keys are sent");
+
+    await x.accounts.update("1234_x", {
+      x_statistics: { posts: "custom", post_schedule: { at: ["1h", "1d"], then_every: "7d", until: "90d" } },
+    });
+    assert.deepEqual(JSON.parse(last().body), {
+      x_statistics: { posts: "custom", post_schedule: { at: ["1h", "1d"], then_every: "7d", until: "90d" } },
+    });
+
+    await x.accounts.update("1234_x", { x_statistics: null });
+    assert.equal(last().body, '{"x_statistics":null}', "null is sent as null (Connect: follow the customer)");
+
+    const refreshed = await x.analytics.refreshPost(9123);
+    assert.equal(last().method, "POST");
+    assert.equal(last().url.pathname, "/v1/analytics/posts/9123/refresh");
+    assert.equal(last().body, undefined);
+    assert.equal(refreshed.data.credits_used, 0.5);
+    assert.equal(refreshed.data.tweets[0].id, "1859");
+
+    const credits = await x.credits.get();
+    assert.equal(last().method, "GET");
+    assert.equal(last().url.pathname, "/v1/credits");
+    assert.equal(credits.data.balance, 412);
+    assert.equal(credits.data.x_statistics.prices.follower_read, 1);
+    assert.equal(credits.data.x_statistics.accounts[0].account_id, "1234_x");
+
+    // A refresh can cost credits: never retried after a 5xx, only after a 429.
+    const retrying = new OmniSocials({ apiKey: "omsk_live_smoke", maxRetries: 2 });
+    retrying.backoffMs = () => 0;
+    status = 502;
+    calls.length = 0;
+    await assert.rejects(retrying.analytics.refreshPost(9123), (err) => err instanceof APIError && err.code === "refresh_failed");
+    assert.equal(calls.length, 1, "a refresh must not be retried after a 502");
+    status = 402;
+    calls.length = 0;
+    await assert.rejects(retrying.analytics.refreshPost(9123), (err) => err.status === 402 && err.code === "insufficient_credits");
+    assert.equal(calls.length, 1);
+    status = 429;
+    calls.length = 0;
+    await assert.rejects(retrying.analytics.refreshPost(9123), RateLimitError);
+    assert.equal(calls.length, 3, "a refresh is retried after a 429");
+    status = 200;
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
 // ─── Webhook signature round-trip ─────────────────────────────────────────────
 // Generate a signature exactly like backend/services/webhooks/webhookDispatcher.js:
 // signed value `${timestamp}.${rawBody}`, HMAC-SHA256 hex, header `t=<ts>,v1=<hex>`.
@@ -611,4 +714,5 @@ console.log("- ESM import OK, client + 11 resources expose all inventory methods
 console.log("- posts.approve / reject send step_order only when given; step_changed keeps current_step_order");
 console.log("- An id stays inside one encoded path segment; an id of \"\", \".\" or \"..\" is refused before sending");
 console.log("- Webhook signature: accepts valid, rejects tampered/stale/wrong-secret/malformed; Previous header verifies with the old secret");
+console.log("- accounts.update sends only the given x_statistics keys (null kept); analytics.refreshPost retried after a 429 only; credits.get");
 console.log("- CJS require() OK (dual build works)");

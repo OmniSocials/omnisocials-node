@@ -7,6 +7,7 @@ import type {
   BestTimesResponse,
   ItemResponse,
   PostAnalytics,
+  PostRefreshResult,
   PostsAnalyticsResponse,
 } from "../types.js";
 import type { TagAnalytics, TagAnalyticsParams } from "../tag-types.js";
@@ -17,6 +18,27 @@ export class AnalyticsResource {
   /** `GET /analytics/posts/:id` - latest per-platform metrics for one post. */
   post(postId: string): Promise<ItemResponse<PostAnalytics>> {
     return this.client.get(`/analytics/posts/${encodeURIComponent(postId)}`);
+  }
+
+  /**
+   * `POST /analytics/posts/:id/refresh` - "Update now": read the X numbers
+   * of one published post now, outside its check schedule. X bills every
+   * read, so it costs half a credit per tweet (each part of a thread counts,
+   * plus half a credit for a video or GIF), and nothing when the post was
+   * already read today (UTC); `credits_used` says what it cost. OmniSocials
+   * Connect accounts pay on the partner's own X app instead. At most 5 reads
+   * of a post a UTC day. Needs `analytics:read`. Because it can cost credits,
+   * it is retried only after a 429, never after a 5xx or a timeout. Errors:
+   * `402 insufficient_credits`, `404 not_found`, `409 refresh_not_available`
+   * (no published X tweet), `429 refresh_limit`, `502 refresh_failed`
+   * (nothing charged).
+   */
+  refreshPost(postId: string | number): Promise<ItemResponse<PostRefreshResult>> {
+    return this.client.post(
+      `/analytics/posts/${encodeURIComponent(String(postId))}/refresh`,
+      undefined,
+      { retry: "rate_limit" }
+    );
   }
 
   /**

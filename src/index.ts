@@ -28,6 +28,7 @@ export { FeatureRequestsResource } from "./resources/feature-requests.js";
 export { ApprovalWorkflowsResource } from "./resources/approval-workflows.js";
 export { AccountsResource } from "./resources/accounts.js";
 export { AnalyticsResource } from "./resources/analytics.js";
+export { CreditsResource } from "./resources/credits.js";
 export { LocationsResource } from "./resources/locations.js";
 export { AudioResource } from "./resources/audio.js";
 export { PinterestResource } from "./resources/pinterest.js";
@@ -133,9 +134,21 @@ export type {
   UpdateHashtagSetParams,
   // Accounts
   Account,
+  AccountXStatistics,
+  XStatisticsPosts,
+  XStatisticsFollowers,
+  XStatisticsPostSchedule,
+  XStatisticsInput,
+  UpdateAccountParams,
   // Analytics
   PostAnalytics,
   PostAnalyticsPlatformEntry,
+  PostRefreshResult,
+  PostRefreshTweet,
+  // Credits
+  Credits,
+  CreditsXStatistics,
+  CreditsXStatisticsAccount,
   AnalyticsOverview,
   AnalyticsOverviewParams,
   AccountAnalyticsParams,
@@ -232,6 +245,7 @@ export type {
   LaunchAdDraftResult,
   AdStatusChangedEventData,
   // Webhooks
+  XStatisticsEventData,
   Webhook,
   WebhookEventType,
   CreateWebhookParams,
