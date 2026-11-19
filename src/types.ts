@@ -1885,11 +1885,16 @@ export type AutomationStatus = "active" | "paused" | "completed";
 
 /**
  * `queued` = the answer waits for a free slot under the send cap (X 15 per 15
- * minutes and 450 a day, Instagram and Facebook 180 an hour) and goes out
- * within the hour, else it becomes `skipped` with `rate_limited`.
+ * minutes and 450 a day, Instagram and Facebook 700 an hour) and goes out
+ * as soon as there is room. One that waited too long (about a day on
+ * Instagram and Facebook, an hour on X) becomes `skipped` with
+ * `rate_limited`.
  * `opted_out` = the person replied STOP on X. `waiting` = Follow first
  * (Instagram): the person got the follow ask and the link goes out after the
- * follow (see {@link AutomationEventFollowGate}).
+ * follow (see {@link AutomationEventFollowGate}); or the tap step of a
+ * follow-up on an Instagram comment: the person got a short DM with one
+ * button and the link goes out after the tap (`follow_gate.mode` `"tap"`).
+ * A `waiting` event counts against the DM limit.
  */
 export type AutomationEventOutcome =
   | "sent"
@@ -1946,6 +1951,52 @@ export interface FollowGate {
   not_following: FollowGateMessage;
 }
 
+/** The optional link button under a follow-up. */
+export interface FollowUpButton {
+  /** 1 to 20 characters. */
+  title: string;
+  /** A web address that starts with `https://` or `http://`, max 2000 characters. */
+  url: string;
+}
+
+/**
+ * The tap step of a follow-up (Instagram only): the first DM of a comment
+ * answer when Follow first is off, a short text with one button. The tap
+ * sends `actions.dm.text` and opens Meta's 24-hour window.
+ */
+export interface FollowUpTap {
+  /** Max 640 characters. Default "Tap the button and I'll send you the link 👇". */
+  text: string;
+  /** Max 20 characters. Default "Send me the link". */
+  button: string;
+}
+
+/**
+ * The follow-up (Instagram and Facebook): one more automatic DM
+ * `delay_hours` after the answer (`actions.dm.text`) went out. Meta allows
+ * an automatic message only within 24 hours after the person's last DM,
+ * button tap or quick reply; the comment and the private reply do not open
+ * that window. So on an Instagram comment with Follow first off the first
+ * DM becomes a tap step (`tap`): the tap sends the link and opens the
+ * window, and people who never tap get no link and no follow-up. With
+ * Follow first on, its own tap is the tap. A DM or a story reply opened the
+ * window itself (no tap step). A Facebook comment answer has no button:
+ * only people who answer the DM in Messenger can get the follow-up. An
+ * automation finished by its DM limit or stop date still sends its
+ * follow-ups.
+ */
+export interface FollowUp {
+  enabled: boolean;
+  /** The follow-up message: max 1000 characters, 640 with a button. `""` when none was written. */
+  text: string;
+  /** Hours after the answer, 1 to 23 (default 23). */
+  delay_hours: number;
+  /** The optional link button under the follow-up, or `null`. */
+  button: FollowUpButton | null;
+  /** The tap step's texts with the defaults filled in on Instagram; `null` on Facebook. */
+  tap: FollowUpTap | null;
+}
+
 /** The `actions` block of an {@link Automation}: the DM, and the optional public reply under the comment. */
 export interface AutomationActions {
   dm: { text: string };
@@ -1953,6 +2004,8 @@ export interface AutomationActions {
   public_reply?: { enabled: boolean; variations: string[] };
   /** Follow first with its texts; `null` on Facebook and X automations (no follow status there). */
   follow_gate?: FollowGate | null;
+  /** The follow-up; `null` on X automations (X allows an automatic DM only as the answer to a DM). */
+  follow_up?: FollowUp | null;
   [key: string]: unknown;
 }
 
@@ -1971,6 +2024,10 @@ export interface AutomationStats {
   failed: number;
   /** Follow first: people who followed after the follow ask, then got the link. */
   followed: number;
+  /** Follow-ups that went out. */
+  follow_ups_sent: number;
+  /** Follow-ups kept back (see {@link AutomationEventFollowUp} `reason`). */
+  follow_ups_skipped: number;
   last_event_at: string | null;
 }
 
@@ -2008,13 +2065,13 @@ export type CommentDmPlatform = "instagram" | "facebook";
  * public reply under the comment. On a Facebook Page a keyword in a comment
  * (or a Messenger message to the Page) is answered with a DM in Messenger;
  * a Page has no story replies. Meta rules, the same on both: one private
- * reply per comment, within 7 days; OmniSocials caps sends at 180 DMs an
+ * reply per comment, within 7 days; OmniSocials caps sends at 700 DMs an
  * hour per account and platform. On X a keyword in a DM to the X account is
  * answered with a DM (no post, no public reply), every answer ends with
  * "Reply STOP to stop automatic messages." and a person who replies STOP
  * gets no automatic DM from the account again; X caps sends at 15 per 15
  * minutes and 450 a day. An answer over a cap waits in a queue (`queued`)
- * for up to an hour.
+ * for up to about a day on Instagram and Facebook (an hour on X).
  */
 export interface Automation {
   id: string;
@@ -2059,7 +2116,8 @@ export interface AutomationEvent {
   outcome: AutomationEventOutcome;
   /**
    * `skipped`: `already_sent`, `limit_reached`, `stopped`, `window_passed`,
-   * `rate_limited` (the send cap stayed full for an hour), `cannot_message`
+   * `rate_limited` (the send cap stayed full: for a day on Instagram and
+   * Facebook, for an hour on X), `cannot_message`
    * (a Page made the comment, or the person's settings block messages),
    * `already_replied`, `dm_window_passed`, `dms_closed` (X: the person does
    * not accept DMs from the account), `no_credits` (X DMs had no credits for
@@ -2080,8 +2138,13 @@ export interface AutomationEvent {
   message: string | null;
   public_reply: string | null;
   platform_message_id: string | null;
-  /** Follow first: where this person is; `null` when the automation had no follow ask for them. */
+  /**
+   * Follow first, or the tap step of a follow-up (`mode` `"tap"`): where this
+   * person is; `null` when the automation had no follow ask or tap step for them.
+   */
   follow_gate: AutomationEventFollowGate | null;
+  /** The follow-up of this answer; `null` when it has none. */
+  follow_up: AutomationEventFollowUp | null;
   created_at: string;
   sent_at: string | null;
   [key: string]: unknown;
@@ -2089,7 +2152,12 @@ export interface AutomationEvent {
 
 /** `follow_gate` of an {@link AutomationEvent}. */
 export interface AutomationEventFollowGate {
-  /** `waiting` = asked to follow, no link yet; `done` = the link went out. */
+  /**
+   * `follow` = Follow first; `tap` = the tap step of a follow-up (no follow
+   * check, so `checked` is `false` and `followed` `null` after the tap).
+   */
+  mode: "follow" | "tap" | (string & {});
+  /** `waiting` = asked to follow (or to tap), no link yet; `done` = the link went out. */
   state: "waiting" | "done" | (string & {}) | null;
   /** When the follow ask went out (ISO 8601). */
   asked_at: string | null;
@@ -2101,6 +2169,33 @@ export interface AutomationEventFollowGate {
   checked: boolean;
   /** `true` = the person followed after the ask; `false` with `followed: true` = they already followed. */
   after_ask: boolean;
+}
+
+/** `follow_up` of an {@link AutomationEvent}: where the follow-up of this answer is. */
+export interface AutomationEventFollowUp {
+  /**
+   * `scheduled` (waits for `due_at`), `sending`, `sent`, `skipped` (kept
+   * back, see `reason`) or `failed`.
+   */
+  state: "scheduled" | "sending" | "sent" | "skipped" | "failed" | (string & {});
+  /** When it is due (ISO 8601). */
+  due_at: string | null;
+  /** When it went out (ISO 8601). */
+  sent_at: string | null;
+  /**
+   * Only on `skipped` and `failed`. `skipped`: `automation_off` (paused or
+   * deleted), `follow_up_off` (switched off since), `plan_inactive`,
+   * `opted_out` (the person's latest message is "stop"), `team_answered` (a
+   * team member wrote to the person by hand after the answer),
+   * `window_closed` (the person's last tap or message is older than 24
+   * hours minus 15 minutes) or `cannot_message` (Meta refused on the
+   * person's side). `failed`: the platform's error text, or `interrupted`
+   * (a send that died midway; it is never sent again).
+   */
+  reason: string | null;
+  /** `skipped`: `reason` in plain words; `failed`: the error text. */
+  reason_label: string | null;
+  platform_message_id: string | null;
 }
 
 /**
@@ -2143,9 +2238,39 @@ export interface FollowGateInput {
   not_following?: { text?: string; button?: string };
 }
 
+/**
+ * `follow_up` on `automations.create()` / `automations.update()` and in
+ * `comment_dm_automation` (see {@link FollowUp}). `text` is required when
+ * `enabled` is `true` (here or stored). `enabled: true` on an X automation
+ * is a `400 follow_up_not_supported`; other bad input is a
+ * `400 validation_error` (e.g. "Write the follow-up",
+ * "follow_up.delay_hours must be a whole number from 1 to 23: ...",
+ * "follow_up.button.title needs 1 to 20 characters",
+ * "follow_up.button.url must be a web address that starts with https:// or http://",
+ * "With a button the follow-up can hold 640 characters").
+ */
+export interface FollowUpInput {
+  enabled?: boolean;
+  /** Max 1000 characters, 640 when a button is set. */
+  text?: string;
+  /** Whole hours after the answer, 1 to 23 (default 23). */
+  delay_hours?: number;
+  /** A link button under the follow-up; `null` removes it on update. */
+  button?: FollowUpButton | null;
+  /**
+   * Instagram only (ignored on Facebook): the tap step's texts, `text` max
+   * 640 and `button` max 20 characters; left out = the defaults. On update
+   * it merges key by key.
+   */
+  tap?: { text?: string; button?: string };
+}
+
 /** `actions` on `automations.create()` / `automations.update()` and in `comment_dm_automation`. */
 export interface AutomationActionsInput {
-  /** The DM to send (`text` max 1000 characters). With Follow first on, this is the link message. */
+  /**
+   * The DM to send (`text` max 1000 characters). With Follow first on, or
+   * the tap step of a follow-up, this is the link message sent after the tap.
+   */
   dm: { text: string };
   /** Comment kind only: up to 10 variations of 300 characters; one is posted under the comment. */
   public_reply?: { enabled?: boolean; variations?: string[] };
@@ -2156,6 +2281,14 @@ export interface AutomationActionsInput {
    * it applies to the Instagram automation; the Facebook one sends at once.
    */
   follow_gate?: FollowGateInput | false | null;
+  /**
+   * The follow-up (Instagram and Facebook): one more DM `delay_hours` after
+   * the answer. `null`, `false` or `{ enabled: false }` turns it off and
+   * keeps the stored texts. In `comment_dm_automation` with
+   * `platforms: ["instagram", "facebook"]` it applies to both automations
+   * (`tap` to the Instagram one only).
+   */
+  follow_up?: FollowUpInput | false | null;
 }
 
 /** `limits` on `automations.create()` / `automations.update()` and in `comment_dm_automation`. */
@@ -2226,6 +2359,9 @@ export interface UpdateAutomationParams {
    * `public_reply: { enabled: false }` or `{ variations: [] }` turns it off.
    * `follow_gate` merges too: `{ enabled: false }` keeps the texts, new texts
    * keep the switch, `null` turns it off; leaving it out keeps the stored one.
+   * `follow_up` merges the same way: keys left out keep their value, `tap`
+   * merges key by key, `button: null` removes the button, and `null`,
+   * `false` or `{ enabled: false }` turns it off and keeps the texts.
    */
   actions?: AutomationActionsInput;
   /**
@@ -2258,7 +2394,8 @@ export interface ListAutomationEventsParams {
  * without `post_id`, `instagram_media_id`, `facebook_post_id`, `platform`,
  * `scope`, `kinds`, `name` and `status`, plus `platforms`; Instagram or
  * Facebook must be one of the post's channels. Needs the
- * `automations:write` scope on the key.
+ * `automations:write` scope on the key. On `posts.update()` an
+ * `actions` without `follow_up` keeps the stored follow-up.
  */
 export interface CommentDmAutomationInput {
   trigger?: { keywords?: string[]; match?: AutomationMatch };
@@ -3144,15 +3281,25 @@ export interface InboxMessage {
    * Threads).
    */
   liked: boolean | null;
-  /** Link to the reply or mentioning post on the platform, when known. */
+  /**
+   * Link to the reply or mentioning post on the platform: set on Threads
+   * replies and mentions, `null` on the other platforms.
+   */
   permalink: string | null;
   /**
-   * Media on this message, when present. Incoming Instagram/Facebook DM
-   * images, videos, voice messages, and story mentions are re-hosted on our
-   * CDN so the URL stays valid indefinitely (the platform's own URL is
-   * short-lived). `null` when the message has no media.
+   * Media on this message, when present: the first item of `attachments`.
+   * Incoming Instagram/Facebook DM images, videos, voice messages and story
+   * mentions, and the photos, videos and GIFs of Threads replies and
+   * mentions, are re-hosted on our CDN so the URL stays valid indefinitely
+   * (the platform's own URL is short-lived). `null` when the message has no
+   * media.
    */
-  attachment: { url: string; type: "image" | "video" | "audio" | "file" } | null;
+  attachment: { url: string; type: InboxAttachmentType } | null;
+  /**
+   * Every file of this message, in order; empty when it has none. A Threads
+   * carousel reply or mention lists each item (up to 20).
+   */
+  attachments: InboxAttachment[];
   sender: InboxParticipant;
   /** The related post for comment/mention messages; null for DMs. */
   post: InboxPostRef | null;
@@ -3186,6 +3333,17 @@ export interface ListInboxMessagesParams {
   limit?: number;
   /** Opaque cursor from a previous response's `pagination.next_cursor`. */
   cursor?: string;
+}
+
+/** `type` of an inbox file, from the fetched bytes (a GIF is `"image"`). */
+export type InboxAttachmentType = "image" | "video" | "audio" | "file" | "link";
+
+/** One file of an inbox message. */
+export interface InboxAttachment {
+  url: string;
+  type: InboxAttachmentType;
+  /** A still of a Threads video, on our CDN; `null` otherwise. */
+  thumbnail_url: string | null;
 }
 
 export interface ReplyInboxParams {

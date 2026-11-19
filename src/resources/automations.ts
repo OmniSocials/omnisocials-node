@@ -54,15 +54,24 @@ export class AutomationsResource {
    * OmniSocials; implies `facebook`), at most one; `trigger.scope`
    * `next_post` or `any` needs none. `actions.dm.text` is required. Meta
    * rules: one private reply per comment, within 7 days; OmniSocials caps
-   * sends at 180 DMs an hour per account and platform, and on X at 15 per
+   * sends at 700 DMs an hour per account and platform, and on X at 15 per
    * 15 minutes and 450 a day; an answer over a cap waits in a queue
-   * (`queued`) for up to an hour. `actions.follow_gate` (Instagram only)
+   * (`queued`) for up to about a day on Instagram and Facebook (an hour on
+   * X). `actions.follow_gate` (Instagram only)
    * sends the link only to people who follow the account: a comment gets a
    * first message with a button, a tap checks the follow, and a DM or story
    * reply is checked at once; the person waits as outcome `waiting` until
-   * they follow. Requires the
+   * they follow. `actions.follow_up` (Instagram and Facebook) sends one more
+   * DM `delay_hours` (1 to 23, default 23) after the answer. Meta allows an
+   * automatic message only within 24 hours after the person's last DM,
+   * button tap or quick reply, so on an Instagram comment with Follow first
+   * off the first DM becomes a tap step (a short text with one button, see
+   * `follow_up.tap`): the tap sends the link, and until then the event is
+   * `waiting`. A Facebook comment answer has no button: only people who
+   * answer the DM in Messenger get the follow-up. Requires the
    * `automations:write` scope (opt-in on the API key). Errors:
    * `400 validation_error`, `400 follow_gate_instagram_only`,
+   * `400 follow_up_not_supported` (`follow_up.enabled: true` on X),
    * `400 post_not_instagram`, `400 post_not_facebook`,
    * `400 post_required`, `404 post_not_found`, `404 instagram_media_not_found`,
    * `404 facebook_post_not_found`, `409 instagram_not_connected`,
@@ -82,14 +91,18 @@ export class AutomationsResource {
    * keeps `max_sends`. `public_reply.enabled: false` or `variations: []`
    * turns the public reply off; `follow_gate: { enabled: false }` turns
    * Follow first off and keeps its texts, `follow_gate: null` turns it off,
-   * new texts keep the switch; `limits.max_sends: null` removes that
+   * new texts keep the switch; `follow_up` merges the same way (`tap`
+   * key by key, `button: null` removes the button, `null`, `false` or
+   * `{ enabled: false }` turns it off and keeps the texts);
+   * `limits.max_sends: null` removes that
    * limit. `status: "paused"` pauses and `"active"` resumes; another
    * `post_id` / `instagram_media_id` / `facebook_post_id` moves the
    * automation to that post. The platform cannot change
    * (`400 platform_immutable`). `status: "active"` on an X automation needs
    * X DMs on for the workspace (`409 x_dms_off`). A `completed` automation
    * starts again when its limits or trigger change. Requires the `automations:write` scope.
-   * `400 no_fields` when the body is empty.
+   * `400 no_fields` when the body is empty; `400 follow_up_not_supported`
+   * for `follow_up.enabled: true` on an X automation.
    */
   update(id: string, params: UpdateAutomationParams): Promise<ItemResponse<Automation>> {
     return this.client.patch(`/automations/${encodeURIComponent(id)}`, params);
@@ -111,7 +124,11 @@ export class AutomationsResource {
    *
    * Note the response shape (see {@link AutomationEventsResponse}): not the
    * plain list envelope but `{ data, counts, pagination }`, where `counts`
-   * is the number of events per outcome.
+   * is the number of events per outcome. Each event carries `follow_up`
+   * (where the follow-up of that answer is: `state`, `due_at`, `sent_at`,
+   * `reason`, `reason_label`, `platform_message_id`; `null` when it has
+   * none) and `follow_gate.mode` (`follow`, or `tap` for the tap step of a
+   * follow-up).
    */
   listEvents(
     id: string,
