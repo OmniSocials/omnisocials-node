@@ -3373,6 +3373,45 @@ export interface ReplyInboxParams {
    * call when working through the inbox.
    */
   include_next?: boolean;
+  /**
+   * Facebook comment replies only: when `true`, OmniSocials puts the tag
+   * `@[<commenter id>]` before the text, so the reply starts with the
+   * commenter's name as a clickable link and Facebook notifies them. Do not
+   * write the name or `@[id]` in `text` yourself. Only on comments on the
+   * Facebook Page's own posts; any other conversation (other platforms,
+   * Facebook DMs and mention conversations, a comment with no Facebook user
+   * id) answers 400 `mention_not_supported` and nothing is sent. The
+   * response then carries `mention` with the result.
+   */
+  mention_author?: boolean;
+}
+
+/** What happened to the tag of a reply sent with `mention_author: true`. */
+export type InboxMentionStatus =
+  | "tagged"
+  | "plain_name"
+  | "failed"
+  | "unverified";
+
+/**
+ * Result of `mention_author: true` on `inbox.reply`.
+ * - `tagged`: Facebook shows the name as a clickable tag and notifies the
+ *   person.
+ * - `plain_name`: Facebook did not accept the tag; OmniSocials edited the
+ *   reply so it starts with "@Name" as plain text (no link, no notification).
+ * - `failed`: Facebook did not accept the tag and the edit failed; the reply
+ *   can show the raw `@[id]` text. Delete it (`inbox.deleteMessage(data.id)`) and
+ *   send it again without `mention_author`.
+ * - `unverified`: the reply was posted, but OmniSocials could not read it
+ *   back from Facebook to check the tag.
+ */
+export interface InboxReplyMention {
+  status: InboxMentionStatus;
+  /** The commenter's name (null when Facebook did not send it). */
+  name: string | null;
+  /** One sentence that explains the status. */
+  message: string;
+  [key: string]: unknown;
 }
 
 /** List envelope for inbox conversations (cursor-paginated). */
@@ -3411,6 +3450,11 @@ export interface InboxReplyResponse {
    * `next` (capped at 500).
    */
   remaining?: number;
+  /**
+   * Only when `mention_author` was set: whether Facebook made the
+   * commenter's name a clickable tag (see `InboxReplyMention`).
+   */
+  mention?: InboxReplyMention;
   [key: string]: unknown;
 }
 

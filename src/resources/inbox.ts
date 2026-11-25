@@ -121,6 +121,14 @@ export class InboxResource {
    * default queue order and filters; `null` when nothing is waiting) and
    * `remaining` in the response. Saves the extra call when working through
    * the inbox.
+   *
+   * Facebook comment replies: pass `mention_author: true` to tag the
+   * commenter. OmniSocials puts `@[<commenter id>]` before the text, so the
+   * reply starts with their name as a clickable link and Facebook notifies
+   * them; do not write the name yourself. The response then carries
+   * `mention` (`status`: `tagged`, `plain_name`, `failed` or `unverified`,
+   * plus `name` and `message`). Any other conversation answers 400
+   * `mention_not_supported` and nothing is sent.
    */
   reply(
     conversationId: string,

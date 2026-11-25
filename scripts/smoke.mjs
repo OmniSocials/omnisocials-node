@@ -229,6 +229,41 @@ assert.equal(adsMethodCount, 108, "every route of adsParity.js has one method");
   }
 }
 
+// ─── Inbox reply: mention_author passes through, mention comes back ──────────
+{
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: new URL(String(url)), method: init.method, body: init.body });
+    return new Response(
+      JSON.stringify({
+        data: { id: "104970664", text: "Jamie Rivera Thanks!" },
+        mention: { status: "tagged", name: "Jamie Rivera", message: "Facebook shows the name as a clickable tag." },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  };
+  try {
+    const c = new OmniSocials({ apiKey: "omsk_live_smoke", maxRetries: 0 });
+    const res = await c.inbox.reply("fb_comment_1_2", {
+      text: "Thanks!",
+      message_id: "104970331",
+      mention_author: true,
+    });
+    assert.equal(calls[0].method, "POST");
+    assert.equal(calls[0].url.pathname, "/v1/inbox/conversations/fb_comment_1_2/reply");
+    assert.deepEqual(JSON.parse(calls[0].body), {
+      text: "Thanks!",
+      message_id: "104970331",
+      mention_author: true,
+    });
+    assert.equal(res.mention.status, "tagged");
+    assert.equal(res.mention.name, "Jamie Rivera");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
 // Error hierarchy sanity.
 const rl = new RateLimitError({ status: 429, code: "rate_limit_exceeded", message: "slow down", retryAfter: 45 });
 assert.ok(rl instanceof APIError && rl instanceof OmniSocialsError);

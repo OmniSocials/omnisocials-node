@@ -276,6 +276,8 @@ export type {
   InboxMessagesResponse,
   InboxMarkReadResponse,
   InboxReplyResponse,
+  InboxReplyMention,
+  InboxMentionStatus,
   InboxHideResponse,
   InboxLikeResponse,
   InboxDeletedMessage,
